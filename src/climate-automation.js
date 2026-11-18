@@ -1201,7 +1201,7 @@ export class ClimateAutomation {
         lease.confirmedAt = this.now();
         if (state.lastAction) {
           state.lastAction = { ...state.lastAction, status: 'confirmed', confirmedAt: this.now(),
-            message: 'Heating target confirmed by Nest.' };
+            message: 'Matching heating target reported by Google.' };
         }
       }
       const fan = lease.kind === 'fan' ? this.sources.get(lease.targetId) : undefined;
@@ -1878,5 +1878,6 @@ export class ClimateAutomation {
     await this.heatingResponse.persist(true);
   }
 }
+
 
 

@@ -853,7 +853,7 @@ test('missing heating feedback refreshes observation once and confirms without r
   await f.engine.tick();
   assert.equal(f.rule('rooms').phase, 'active');
   assert.equal(f.rule('rooms').lastAction.status, 'confirmed');
-  assert.match(f.rule('rooms').lastAction.message, /confirmed by Nest/);
+  assert.match(f.rule('rooms').lastAction.message, /Matching heating target reported by Google/);
   assert.equal(f.commands.length, 1);
   assert.equal(refreshes, 1);
 });
@@ -3025,3 +3025,4 @@ test('shared time zone controls live windows and recomputes daily holds using ho
   assert.equal(f.engine.fanManualHolds.get('fan').until, Date.parse('2026-11-02T13:00:00Z'));
   assert.equal(f.fanCommands.length, 1);
 });
+

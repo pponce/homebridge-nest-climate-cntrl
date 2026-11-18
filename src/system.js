@@ -53,6 +53,7 @@ import { URL } from 'node:url';
 // Import our modules
 import HomeKitDevice from './HomeKitDevice.js';
 import Connections from './connections.js';
+import { climateFeedback } from './google-feedback.js';
 import GrpcTransport from './grpctransport.js';
 import { loadDeviceModules, getDeviceHKCategory } from './devices.js';
 import { processConfig } from './config.js';
@@ -640,6 +641,10 @@ export default class NestAccfactory {
     }
 
     let grpcTransport = connection.grpcTransport;
+    const generation = (connection.observeGeneration ?? 0) + 1;
+    connection.observeGeneration = generation;
+    connection.climateObserving = false;
+    this.dashboard?.invalidate(uuid);
     grpcTransport
       .observe(
         'nestlabs.gateway.v2.',
@@ -649,7 +654,10 @@ export default class NestAccfactory {
         async (message) => {
           // A released Observe stream can still finish a queued callback.
           // Only the active account transport may mutate the cache or remove accessories.
-          if (this.#connections?.get(uuid) !== connection || connection.grpcTransport !== grpcTransport || connection.authorised !== true) {
+          if (
+            this.#connections?.get(uuid) !== connection || connection.grpcTransport !== grpcTransport ||
+            connection.observeGeneration !== generation || connection.authorised !== true
+          ) {
             return;
           }
 
@@ -721,6 +729,16 @@ export default class NestAccfactory {
                 this.#rawData[resourceId] = {
                   connection: uuid,
                   source: DATA_SOURCE.GOOGLE,
+                  feedback: {
+                    ...this.#rawData?.[resourceId]?.feedback,
+                    [traitLabel]: {
+                      generation,
+                      receivedAt: Date.now(),
+                      stateTypes: [...(trait.stateTypes ?? [])],
+                      monotonicVersion: trait.monotonicVersion === undefined ? null : String(trait.monotonicVersion),
+                      publisherVersion: trait.publisherVersion === undefined ? null : String(trait.publisherVersion),
+                    },
+                  },
                   value: {
                     ...this.#rawData?.[resourceId]?.value,
                     [traitLabel]: patchValues,
@@ -763,6 +781,7 @@ export default class NestAccfactory {
           result.status === GrpcTransport.STATUS.UNAUTHENTICATED &&
           this.#connections?.get(uuid) === connection &&
           connection.grpcTransport === grpcTransport &&
+          connection.observeGeneration === generation &&
           connection.authorised === true
         ) {
           this.#connections?.markUnauthorised?.(uuid, 'google-api-' + result.status);
@@ -778,12 +797,18 @@ export default class NestAccfactory {
         );
       })
       .finally(() => {
-        if (this.#connections?.get(uuid) === connection && connection.grpcTransport === grpcTransport) {
+        if (
+          this.#connections?.get(uuid) === connection && connection.grpcTransport === grpcTransport &&
+          connection.observeGeneration === generation
+        ) {
           connection.climateObserving = false;
           this.dashboard?.invalidate(uuid);
         }
         // Only continue the observe loop if this exact connection is still active and authorised.
-        if (this.#connections?.get(uuid) === connection && connection.grpcTransport === grpcTransport && connection.authorised === true) {
+        if (
+          this.#connections?.get(uuid) === connection && connection.grpcTransport === grpcTransport &&
+          connection.observeGeneration === generation && connection.authorised === true
+        ) {
           let observeDelay = API_STREAM_LOOP_INTERVAL;
 
           if (observeFailed === true) {
@@ -954,7 +979,11 @@ export default class NestAccfactory {
                 }
               }
 
-              this.dashboard?.update(serialNumber, deviceModule.class.TYPE, deviceData, resourceData?.connection);
+              this.dashboard?.update(serialNumber, deviceModule.class.TYPE, deviceData, resourceData?.connection,
+                resourceData?.source === DATA_SOURCE.GOOGLE ? climateFeedback(
+                  resourceData, deviceModule.class.TYPE,
+                  this.#connections.get(resourceData.connection)?.observeGeneration, deviceData,
+                ) : undefined);
               // Send updated data onto HomeKit device for it to process
               await HomeKitDevice.message(trackedDevice.uuid, HomeKitDevice.UPDATE, deviceData);
             }
@@ -1604,4 +1633,5 @@ export default class NestAccfactory {
   }
 
 }
+
 

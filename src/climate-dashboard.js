@@ -159,7 +159,7 @@ export class ClimateDashboard {
     return this.saving;
   }
 
-  update(serial, type, data, account) {
+  update(serial, type, data, account, feedback) {
     if (!['Thermostat', 'TemperatureSensor', 'Heatlink', 'HomeAway'].includes(type)) {
       return;
     }
@@ -169,10 +169,16 @@ export class ClimateDashboard {
     if (Object.hasOwn(data, 'active_rcs_sensor')) {
       safe.active_rcs_sensor = data.active_rcs_sensor;
     }
+    if (feedback) {
+      for (const field of feedback.invalidFields) {
+        safe[field] = undefined;
+      }
+    }
     this.devices.set(serial, {
       ...previous,
+      feedback: feedback ?? previous.feedback,
       account: account ?? previous.account,
-      needsUpdate: previous.needsUpdate === true && data.hvac_state === undefined &&
+      needsUpdate: feedback ? !feedback.ready : previous.needsUpdate === true && data.hvac_state === undefined &&
         !(type === 'TemperatureSensor' && Number.isFinite(data.current_temperature)) &&
         !(type === 'HomeAway' && typeof data.occupancy === 'boolean'),
       id: data.nest_google_device_uuid ?? previous.id,
@@ -497,5 +503,6 @@ export class ClimateDashboard {
     }
   }
 }
+
 
 

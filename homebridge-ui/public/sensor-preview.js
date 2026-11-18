@@ -34,7 +34,7 @@ export function sensorSources(snapshot, external) {
         bridgeName: 'Nest',
         temperature,
         lastReadAt: snapshot.generatedAt ?? device.lastUpdate,
-        measuredAt: null,
+        measuredAt: device.feedback?.temperatureReceivedAt ?? null,
         available:
           account?.authorised === true &&
           account?.observing === true &&
@@ -113,4 +113,5 @@ export function previewGroup({ sources, selected, desired, thermostat, now = Dat
     reason: 'Read-only estimate. No thermostat changes are sent; device limits and control behavior still require validation.',
   };
 }
+
 
