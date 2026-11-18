@@ -430,7 +430,9 @@ test('schedule failures retain safe response details after timeout and restart',
   const failure = Object.assign(new Error('private response'), {
     scheduleDiagnostic: 'Google transport status: 0; operations: COMPLETE/7.',
   });
-  const f = await fixture(t, () => { throw new AggregateError([failure], 'Rejected'); });
+  const f = await fixture(t, () => {
+    throw new AggregateError([failure], 'Rejected');
+  });
   const warnings = [];
   f.dashboard.log = { warn: (message) => warnings.push(message) };
   await assert.rejects(f.manager.action(f.payload('auto', { value: false })), /COMPLETE\/7/);

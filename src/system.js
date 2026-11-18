@@ -1479,7 +1479,7 @@ export default class NestAccfactory {
                 const progress = (value) => ['QUEUED', 'PENDING', 'STARTED', 'COMPLETE'].includes(value) ? value : 'unknown';
                 error.scheduleDiagnostic = 'Google transport status: ' + code(grpcResult?.status) +
                   '; operations: ' + (Array.isArray(operations) ? operations.map((item) =>
-                    progress(item?.progress) + '/' + code(item?.status?.code ?? 0)).join(', ') : 'missing') + '.';
+                  progress(item?.progress) + '/' + code(item?.status?.code ?? 0)).join(', ') : 'missing') + '.';
               }
               throw error;
             }
