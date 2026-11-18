@@ -194,5 +194,10 @@
     "lines": 100,
     "branches": 90,
     "functions": 100
+  },
+  "src/nest-schedules.js": {
+    "lines": 95,
+    "branches": 90,
+    "functions": 90
   }
 }

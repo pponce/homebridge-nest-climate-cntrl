@@ -161,3 +161,16 @@ test('a retired callback on the same transport cannot refresh a replacement gene
   assert.equal(f.dashboard.devices.get('TEST').data.physical_temperature, 21);
   await f.finish();
 });
+
+
+test('schedule feedback preserves the trait generation and receipt time separately from cached values', () => {
+  const raw = { value: {}, feedback: {
+    schedule_learning_settings: { generation: 2, receivedAt: 1234, stateTypes: ['ACCEPTED'] },
+    heat_schedule_settings: { generation: 1, receivedAt: 1000, stateTypes: ['CONFIRMED'] },
+  } };
+  const result = climateFeedback(raw, 'Thermostat', 2, {});
+  assert.equal(result.schedules.schedule_learning_settings.generation, 2);
+  assert.equal(result.schedules.schedule_learning_settings.receivedAt, 1234);
+  assert.equal(result.schedules.heat_schedule_settings.generation, 1);
+  assert.equal(result.schedules.cool_schedule_settings, undefined);
+});

@@ -56,6 +56,7 @@ async function fixture(t, command) {
     refreshFeedback: () => true,
     command: async (...args) => {
       calls.push(args);
+      assert.equal(args[2].guard(), true);
       if (command) {
         await command(...args);
       }
@@ -313,4 +314,114 @@ test('cached schedule traits cannot confirm a write or bypass learning policy af
   device.feedback.schedules.schedule_learning_settings.receivedAt = at + 1;
   assert.equal(f.manager.snapshot('test').pending, null);
   await f.manager.saving;
+});
+
+test('local preference collection is bounded, optional and never writes Nest', async (t) => {
+  const f = await fixture(t);
+  await f.manager.observe('test', 22, 'room');
+  assert.equal(f.manager.record('test').events.length, 1);
+  await f.manager.observe('test', 22, 'compensation');
+  await f.manager.observe('test', NaN, 'room');
+  assert.equal(f.manager.record('test').events.length, 1);
+  await f.manager.action(f.payload('learning', { value: false }));
+  await f.manager.observe('test', 23, 'room');
+  assert.equal(f.manager.record('test').events.length, 1);
+  await assert.rejects(f.manager.action(f.payload('learning', { value: 'on' })), /Choose/);
+  await f.manager.action(f.payload('learning', { value: true }));
+  f.manager.record('test').events = Array.from({ length: 500 }, () => ({ at: Date.now(), value: 21, source: 'room', zone: 'UTC' }));
+  await f.manager.observe('test', 22, 'manual');
+  assert.ok(f.manager.record('test').events.length <= 500);
+  delete f.data.schedule_time_zone;
+  const count = f.manager.record('test').events.length;
+  await f.manager.observe('test', 22, 'room');
+  assert.equal(f.manager.record('test').events.length, count);
+  assert.equal(f.calls.length, 0);
+});
+
+test('editing one mode preserves other modes and pending writes reject conflicting actions', async (t) => {
+  const f = await fixture(t);
+  f.data.native_schedules.modes.cool = [{ day: 1, time: 25200, cool: 25 }];
+  await assert.rejects(f.manager.action(f.payload('save', { mode: 'heat', entries: [] })), /confirm/);
+  await assert.rejects(f.manager.action(f.payload('save', { mode: 'range', entries: [],
+    confirmation: 'save-temperature-schedule' })), /reported/);
+  await f.manager.action(f.payload('save', { mode: 'heat', entries: [{ ...row, heat: 22 }],
+    confirmation: 'save-temperature-schedule' }));
+  assert.deepEqual(Object.keys(f.calls[0][1].temperature_schedules), ['heat']);
+  await assert.rejects(f.manager.action(f.payload('auto', { value: false })), /previous/);
+  await assert.rejects(f.manager.action(f.payload('acknowledge')), /Wait/);
+  await f.manager.action(f.payload('check'));
+  assert.equal(f.calls.length, 1);
+  f.data.native_schedules.modes.heat = [{ ...row, heat: 22 }];
+  assert.equal(f.manager.snapshot('test').pending, null);
+  await f.manager.saving;
+});
+
+test('invalid commands and unavailable capability never send writes', async (t) => {
+  const f = await fixture(t);
+  await assert.rejects(f.manager.action(f.payload('unknown')), /Unsupported/);
+  await assert.rejects(f.manager.action({ ...f.payload('auto'), serial: 'missing' }), /unavailable/);
+  f.manager.busy.add('test');
+  await assert.rejects(f.manager.action(f.payload('auto', { value: false })), /progress/);
+  f.manager.busy.clear();
+  f.data.native_schedules = { autoSchedule: null, modes: {} };
+  assert.equal(await f.manager.ensureRulePolicy('test'), null);
+  assert.match(f.manager.snapshot('test').message, /unavailable/);
+  await assert.rejects(f.manager.action(f.payload('auto', { value: false })), /unavailable/);
+  await assert.rejects(f.manager.action(f.payload('clear', { confirmation: 'clear-temperature-schedules' })), /No editable/);
+  await assert.rejects(f.manager.action(f.payload('approve', { id: 'missing' })), /unavailable/);
+  await assert.rejects(f.manager.action(f.payload('dismiss', { id: 'missing' })), /changed/);
+  assert.equal(f.calls.length, 0);
+});
+
+test('corrupt saved preferences prevent automatic policy changes', async (t) => {
+  const f = await fixture(t);
+  for (const content of ['not json', JSON.stringify({ version: 2 }),
+    JSON.stringify({ version: 1, records: { test: { events: [null] } } })]) {
+    await fs.writeFile(f.manager.file, content);
+    const manager = new NestSchedules(f.dashboard);
+    await manager.start();
+    assert.match(await manager.ensureRulePolicy('test'), /could not be read/);
+    await assert.rejects(manager.action(f.payload('auto', { value: false })), /could not be read/);
+  }
+  assert.equal(f.calls.length, 0);
+});
+
+test('dismissed suggestions stay local and malformed or sparse evidence creates no suggestion', async (t) => {
+  const f = await fixture(t);
+  f.manager.record('test').events = [2, 9, 16].map((day) => ({
+    at: Date.parse('2026-11-' + String(day).padStart(2, '0') + 'T15:10:00Z'),
+    value: 22, source: 'room', zone: 'America/Los_Angeles',
+  }));
+  const suggestion = f.manager.snapshot('test').suggestions[0];
+  await f.manager.action(f.payload('dismiss', { id: suggestion.id }));
+  assert.equal(f.manager.snapshot('test').suggestions.length, 0);
+  assert.equal(f.calls.length, 0);
+  assert.deepEqual(learningSuggestions([], null), []);
+  assert.deepEqual(learningSuggestions([{ at: Date.now(), value: 21, zone: 'bad/zone', source: 'room' }], 'bad/zone'), []);
+  assert.throws(() => validateEntries('bad-mode', []));
+  assert.throws(() => scheduleTrait('heat', [], { type: 'OTHER' }));
+  assert.deepEqual(readSchedules({ heat_schedule_settings: { type: 'SET_POINT_SCHEDULE_TYPE_HEAT',
+    setpoints: { invalid: { secondsInDay: -1 } } } }).modes, {});
+});
+
+test('learning preferences and approved-suggestion state persist across restart with configured time zone', async (t) => {
+  const f = await fixture(t);
+  f.dashboard.automation = { deviceOptions: [{ serialNumber: 'test', scheduleTimeZone: 'UTC' }] };
+  await f.manager.observe('test', 22, 'room');
+  f.manager.record('test').dismissed = ['reviewed-suggestion'];
+  await f.manager.persist();
+  const restored = new NestSchedules(f.dashboard);
+  await restored.start();
+  assert.equal(restored.snapshot('test').zone, 'UTC');
+  assert.equal(restored.record('test').events.length, 1);
+  assert.deepEqual(restored.record('test').dismissed, ['reviewed-suggestion']);
+});
+
+test('distinct repeated weekday preferences produce separate chronological suggestions', () => {
+  const events = [2, 9, 16, 3, 10, 17].map((day) => ({
+    at: Date.parse('2026-11-' + String(day).padStart(2, '0') + 'T15:10:00Z'),
+    value: 21, source: 'room', zone: 'America/Los_Angeles',
+  }));
+  const result = learningSuggestions(events, 'America/Los_Angeles', Date.parse('2026-11-18T12:00:00Z'));
+  assert.deepEqual(result.map((entry) => entry.day), [1, 2]);
 });
