@@ -123,9 +123,10 @@ export function renderScheduleControls(device, { unit, live, send, refresh }) {
       view.draft.entries.push({ day: 1, time: 7 * 3600, ...(view.mode !== 'cool' ? { heat: 21 } : {}), ...(view.mode !== 'heat' ? { cool: 24 } : {}) }); draw();
     }, !view.busy));
     body.append(button('Save schedule to Nest', () => confirm('Replace the ' + view.mode + ' schedule on ' + (device.data.description || 'this thermostat') + ' with these ' + entries.length + ' entries? Other schedule modes are preserved.',
-      { action: 'save', mode: view.mode, entries: structuredClone(entries), confirmation: 'save-temperature-schedule' }, view.draft.expected), enabled));
+      { action: 'save', mode: view.mode, entries: structuredClone(entries), confirmation: 'save-temperature-schedule',
+        ...(view.draft.scheduleRevision ? { scheduleRevision: view.draft.scheduleRevision } : {}) }, view.draft.expected), enabled));
     body.append(button('Cancel draft', () => { delete view.draft; view.confirm = null; draw(); }, !view.busy));
-  } else body.append(button('Edit schedule', () => { view.draft = { entries: structuredClone(entries), expected: model.expected, unit }; draw(); }));
+  } else body.append(button('Edit schedule', () => { view.draft = { entries: structuredClone(entries), expected: model.expected, scheduleRevision: model.scheduleRevisions?.[view.mode], unit }; draw(); }));
   body.append(button('Clear temperature schedules', () => confirm('Clear all reported temperature schedules (' + modes.join(', ') + ') on ' + (device.data.description || 'this thermostat') + '? This removes their weekly entries. Auto-Schedule is a separate setting; if on, it may create new entries.',
     { action: 'clear', confirmation: 'clear-temperature-schedules' }), enabled && !view.draft));
   if (model.suggestions?.length) {

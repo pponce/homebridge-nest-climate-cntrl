@@ -503,3 +503,45 @@ test('successful write responses persist after timeout and external confirmation
   assert.equal(f.manager.snapshot('test').lastResponse.value, false);
   await f.manager.saving;
 });
+
+test('an open heat draft survives Auto-Schedule and cooling changes without overwriting cooling', async (t) => {
+  const f = await fixture(t);
+  const draft = f.payload('save', { mode: 'heat', entries: [{ ...row, heat: 22 }],
+    scheduleRevision: f.manager.snapshot('test').scheduleRevisions.heat, confirmation: 'save-temperature-schedule' });
+  await f.manager.action(f.payload('auto', { value: false }));
+  f.data.native_schedules.autoSchedule = false;
+  assert.equal(f.manager.snapshot('test').pending, null);
+  f.data.native_schedules.modes.cool = [{ day: 2, time: 36000, cool: 25 }];
+  assert.notEqual(draft.expected, f.manager.snapshot('test').expected);
+  await f.manager.action(draft);
+  assert.deepEqual(f.calls[1][1], { temperature_schedules: { heat: [{ ...row, heat: 22 }] } });
+});
+
+test('same-mode schedule changes reject scoped drafts and malformed revisions before sending', async (t) => {
+  const f = await fixture(t);
+  const draft = f.payload('save', { mode: 'heat', entries: [{ ...row, heat: 22 }],
+    scheduleRevision: f.manager.snapshot('test').scheduleRevisions.heat, confirmation: 'save-temperature-schedule' });
+  f.data.native_schedules.modes.heat = [{ ...row, heat: 20 }];
+  await assert.rejects(f.manager.action(draft), /draft is kept/);
+  await assert.rejects(f.manager.action({ ...draft, scheduleRevision: undefined }), /changed/);
+  await assert.rejects(f.manager.action({ ...draft, mode: 'cool' }), /changed/);
+  delete f.data.native_schedules.modes.heat;
+  await assert.rejects(f.manager.action(draft), /changed/);
+  assert.equal(f.calls.length, 0);
+});
+
+test('queued schedule guard tolerates unrelated changes but rejects edited-mode changes and disconnection', async (t) => {
+  const f = await fixture(t, (_id, _values, origin) => {
+    f.data.native_schedules.autoSchedule = false;
+    assert.equal(origin.guard(), true);
+    f.data.native_schedules.modes.cool = [];
+    assert.equal(origin.guard(), true);
+    f.data.native_schedules.modes.heat = [{ ...row, heat: 20 }];
+    assert.equal(origin.guard(), false);
+    f.data.native_schedules.modes.heat = [row];
+    f.data.online = false;
+    assert.equal(origin.guard(), false);
+  });
+  await f.manager.action(f.payload('save', { mode: 'heat', entries: [{ ...row, heat: 22 }],
+    scheduleRevision: f.manager.snapshot('test').scheduleRevisions.heat, confirmation: 'save-temperature-schedule' }));
+});

@@ -400,6 +400,7 @@ export class NestSchedules {
     return {
       ...native,
       expected: hash(native),
+      scheduleRevisions: Object.fromEntries(Object.entries(native.modes).map(([mode, entries]) => [mode, hash([mode, entries])])),
       connected: this.connected(serial),
       zone: this.zone(serial),
       allowNestLearning: record.allowNestLearning === true,
@@ -487,7 +488,13 @@ export class NestSchedules {
       throw new Error('Thermostat unavailable.');
     }
     const model = this.snapshot(serial);
-    if (expected !== model.expected) {
+    const scopedSchedule = action === 'save' && Object.hasOwn(payload, 'scheduleRevision');
+    if (scopedSchedule && (typeof payload.scheduleRevision !== 'string' ||
+        payload.scheduleRevision !== model.scheduleRevisions[payload.mode])) {
+      throw new Error('This Nest schedule changed while you were editing. Your draft is kept. ' +
+        'Cancel the draft and reopen Edit schedule to review it.');
+    }
+    if (!scopedSchedule && expected !== model.expected) {
       throw new Error('Nest schedule changed. Refresh and review it before saving.');
     }
     if (this.busy.has(serial)) {
@@ -612,7 +619,9 @@ export class NestSchedules {
       record.message = pending.action === 'auto' ? 'Requested Nest Auto-Schedule ' +
         (pending.value ? 'On' : 'Off') + '. Waiting for Nest confirmation.' : 'Requested schedule update. Waiting for Nest confirmation.';
       await this.persist();
-      const guard = () => this.connected(serial) && hash(this.native(serial)) === expected;
+      const guard = () => this.connected(serial) && (scopedSchedule ?
+        hash([payload.mode, this.native(serial).modes[payload.mode]]) === payload.scheduleRevision :
+        hash(this.native(serial)) === expected);
       const result = await this.dashboard.command(this.dashboard.devices.get(serial).id, values, {
         automation: true,
         guard,

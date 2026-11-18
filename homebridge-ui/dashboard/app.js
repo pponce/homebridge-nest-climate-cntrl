@@ -459,8 +459,12 @@ function refreshVisibleDashboard() {
 setInterval(refreshVisibleDashboard, 30000);
 document.addEventListener('visibilitychange', refreshVisibleDashboard);
 async function refreshPendingEco() {
+  const schedulePending = state.status?.devices?.some((device) => {
+    const pending = device.scheduleControls?.pending;
+    return pending && !pending.failure && Date.now() - pending.at <= 60000;
+  });
   if (document.hidden || !state.session?.authenticated || $('app').hidden || state.restarting ||
-    ![...ecoCommands.values(), ...targetCommands.values()].some((command) => command.phase === 'pending')) return;
+    (!schedulePending && ![...ecoCommands.values(), ...targetCommands.values()].some((command) => command.phase === 'pending'))) return;
   await readStatus(); renderLive();
 }
 setInterval(refreshPendingEco, 2000);

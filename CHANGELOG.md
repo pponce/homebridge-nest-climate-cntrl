@@ -1,4 +1,10 @@
 <!-- Modified by pponce for Nest Climate Cntrl; derived from Nest Accfactory. See NOTICE. -->
+## Unreleased
+
+- Preserve open weekly schedule drafts when Auto-Schedule or a different schedule mode changes. Changes to the schedule being edited still require review before saving.
+- Refresh local dashboard status every two seconds while schedule changes await confirmation, for up to one minute. Show failed requests separately and provide downloadable redacted Nest write responses.
+- Use the native protobuf field name when changing Auto-Schedule.
+
 ## v0.6.12-beta.2
 
 **Native weekly schedule controls and approved room-temperature learning.**

@@ -43,3 +43,10 @@ Investigate native Auto-Schedule writes before choosing a fallback. On beta.2, b
 - Binary protobuf FieldMask paths use server proto field names, whereas the JS value is encoded by field number. Change only the mask path to `schedule_learning_enabled`; retain the JS value `scheduleLearningEnabled`.
 - Evidence: https://protobuf.dev/programming-guides/json/ describes the snake_case-to-camelCase conversion as a JSON representation rule. This connection uses binary gRPC, with the paths strings encoded literally.
 - Tests exercise both On and Off payloads. Live Nest acceptance still requires verification after installing the corrected revision.
+
+## Draft conflicts and confirmation latency
+- User verified Auto-Schedule Off takes effect in Nest after the corrected field mask. Google returned success and an accepted-state version. User also reported an existing schedule edit succeeded after reopening the editor.
+- Reproduced stale draft cause: the editor captured a hash containing Auto-Schedule state. Toggling learning while editing invalidated the draft without changing its weekly entries.
+- Add per-mode schedule revisions for new editor saves and queued-write guards. Existing clients retain the broad legacy guard. Heat changes still reject stale Heat drafts; Auto-Schedule/Cool changes do not.
+- Normal dashboard polling is 30 seconds. Extend the existing two-second local status polling to pending schedule actions for up to 60 seconds, excluding failed requests. This reads local status; it does not send commands or restart Nest observation.
+- 58 focused tests pass, including scoped conflicts and pending/failed/expired/hidden-session polling. CI validation pending for this revision.
