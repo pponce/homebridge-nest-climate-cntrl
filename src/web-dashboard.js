@@ -26,6 +26,7 @@ const assets = new Map([
   ['/apple-touch-icon.png', ['dashboard/apple-touch-icon.png', 'image/png']],
   ['/icon-192.png', ['dashboard/icon-192.png', 'image/png']],
   ['/icon-512.png', ['dashboard/icon-512.png', 'image/png']],
+  ['/shared/schedule-controls.js', ['public/schedule-controls.js', 'text/javascript; charset=utf-8']],
   ['/shared/climate-utils.js', ['public/climate-utils.js', 'text/javascript; charset=utf-8']],
   ['/shared/time-zone-picker.js', ['public/time-zone-picker.js', 'text/javascript; charset=utf-8']],
   ['/shared/sensor-preview.js', ['public/sensor-preview.js', 'text/javascript; charset=utf-8']],
@@ -557,6 +558,14 @@ export class WebDashboard {
       }
       return;
     }
+    if (request.method === 'POST' && route === '/api/schedules') {
+      try {
+        this.send(response, 200, await this.dashboard.schedules.action(await this.body(request)));
+      } catch (error) {
+        throw new DashboardConfigError(error.message, 400);
+      }
+      return;
+    }
     if (request.method === 'POST' && route === '/api/temperature-target') {
       const payload = await this.body(request);
       try {
@@ -594,4 +603,5 @@ export class WebDashboard {
     }
   }
 }
+
 

@@ -48,6 +48,7 @@
 'use strict';
 
 // Define nodejs module requirements
+import { readSchedules } from '../nest-schedules.js';
 import path from 'node:path';
 import { setTimeout, clearTimeout } from 'node:timers';
 import fs from 'node:fs/promises';
@@ -2373,6 +2374,7 @@ export function processRawData(log, rawData, config, deviceType = undefined, cha
           mappedResult.data.active_rcs_sensor = native.selection.source === 'thermostat' ? '' :
             native.selection.source === 'remote' ? native.selection.sensorId : undefined;
           Object.assign(mappedResult.data, reportedScheduleTimeZone(rawData, object_key));
+          mappedResult.data.native_schedules = readSchedules(value.value);
           mappedResult.data.physical_temperature = mappedResult.data.current_temperature;
           // If an active remote temperature sensor is selected, use its temperature as the thermostat current temperature
           if (Number.isFinite(Number(mappedResult.data.active_rcs_sensor_temperature)) === true) {
@@ -2475,5 +2477,6 @@ export function processRawData(log, rawData, config, deviceType = undefined, cha
 
   return devices;
 }
+
 
 

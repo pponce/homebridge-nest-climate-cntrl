@@ -519,3 +519,24 @@ A conflicting setting suspends automatic control for that fan until **Resume**. 
 Temperature rules temporarily suspend adjustments while Nest Eco is active. When Eco ends, control resumes automatically after the thermostat is in Heat mode and current readings and sensor settings are ready. The rule follows the current Nest schedule target when one is available, while retaining its adjustment limits and minimum update interval.
 
 Turn on **Require Resume after Eco** in the temperature rule to keep control paused until you select Resume. This option is off by default. A rule explicitly paused by you always requires Resume, regardless of this setting.
+
+
+## Temperature schedules and room preference learning
+
+Expand **Temperature schedule** on an Overview thermostat tile. The controls are available in the standalone dashboard and Homebridge interface for schedule modes reported by Nest.
+
+- **Nest Auto-Schedule** displays the reported learning state. Turning it off preserves existing weekly entries. Turning it on asks you to acknowledge that room-temperature compensation may be learned by Nest as a temperature preference.
+- **Edit schedule** lets you select Heat, Cool or Heat • Cool when reported, add or remove day/time entries and edit targets in your chosen units. Review the entries and confirm **Save schedule to Nest**. A stale draft is rejected if Nest's schedule changes while you edit it.
+- **Clear temperature schedules** removes the entries in all reported editable modes after confirmation. It does not reset the thermostat or clear native sensor schedules. Learning remains a separate setting and can create new entries if enabled.
+
+Times use the thermostat's schedule time zone. Changes are live device actions, separate from **Save changes** for plugin configuration. **Waiting for Nest confirmation** means the request has been sent; displayed state changes only when Nest reports it. After an unconfirmed request, check Nest before explicitly allowing another attempt. Requests are not blindly repeated after restart or connection failure.
+
+An eligible temperature rule disables Nest Auto-Schedule by default on thermostats that report the learning control. It waits for confirmation before compensating the heating target. Explicitly turning Nest Auto-Schedule on in the tile overrides that default and persists across restarts. Disabling or removing a rule does not automatically turn Nest learning back on. If learning control is unavailable, the tile asks you to check Nest directly and existing temperature-rule behavior continues.
+
+**Learn room-temperature preferences** defaults on. It records intentional desired-room-temperature changes made through the dashboard or Apple Home, including confirmed native target adjustments handled by an active rule. Compensation writes, Eco changes, existing schedule events and unclassified changes outside the plugin do not train it. At most 500 observations from the last 42 days are retained locally. A valid thermostat schedule time zone is required.
+
+The plugin suggests a heating entry after similar choices on at least three distinct dates for the same weekday and 30-minute interval. The observed targets must span no more than 0.6°C (1.08°F); the proposed target is their median rounded to 0.1°C. A same-day correction replaces that day's earlier evidence for the interval. Time-zone changes do not combine observations from different zones.
+
+Review each suggestion and select **Approve and save to Nest**, or **Dismiss**. Approval adds or replaces only the heating entry at that exact weekday and time, preserving the other entries. There is no automatic publication of learned entries. Saved entries run on Nest, including while Homebridge is offline; room-average compensation requires Homebridge and an active temperature rule.
+
+Native API availability varies by thermostat and account. A reported readable schedule does not guarantee that Nest will accept a write. Rejections and missing confirmation are shown explicitly; the dashboard does not report an unconfirmed write as completed.

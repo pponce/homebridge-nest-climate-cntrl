@@ -669,3 +669,18 @@ caption { text-align: left; color: var(--muted); padding-bottom: 10px; font-size
 .thermostat-card { display: grid; grid-template-rows: subgrid; grid-row: span 4; row-gap: 0; }
 .thermostat-main { display: grid; grid-template-rows: subgrid; grid-row: span 3; row-gap: 0; }
 .thermostat-card > .thermostat-controls { align-self: start; }
+
+
+.schedule-controls { border-top: 1px solid var(--line, #ddd); padding-top: 14px; margin-top: 14px; }
+.schedule-controls summary { cursor: pointer; font-weight: 650; }
+.schedule-body { display: grid; gap: 12px; padding-top: 12px; }
+.schedule-body label { display: grid; gap: 5px; font-size: .85rem; }
+.schedule-body input, .schedule-body select { min-width: 0; max-width: 100%; padding: 8px; }
+.schedule-row { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line, #ddd); align-items: end; }
+.schedule-row label { flex: 1 1 95px; }
+.schedule-row input { width: 100%; box-sizing: border-box; }
+.schedule-confirm { padding: 14px; border: 1px solid #ac7430; border-radius: 10px; background: #fff4df; color: #32200b; }
+.schedule-confirm button { margin: 5px; }
+.schedule-message { overflow-wrap: anywhere; }
+.schedule-rows { max-height: 400px; overflow-y: auto; }
+.schedule-warning { padding: 10px; border-left: 3px solid #ac7430; background: #fff4df; color: #32200b; }

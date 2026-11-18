@@ -1033,6 +1033,9 @@ export class ClimateAutomation {
         this.pause(state, 'The desired room temperature could not be saved. Review the rule, then Resume.');
         throw error;
       }
+      await this.dashboard.schedules?.observe(serial, request.value, 'room').catch(() => {
+        this.dashboard.log?.warn?.('Room preference could not be saved for schedule learning.');
+      });
       await this.evaluate();
       if (!this.roomControl(serial)) {
         throw new Error('Room control became unavailable. Review the rule before changing its target.');
@@ -1162,6 +1165,7 @@ export class ClimateAutomation {
       const pending = state.manualTarget;
       if (pending.accepted && equal(actual, pending.expected)) {
         this.applyRoomTarget(state, pending.desired, 'manual', actual);
+        void this.dashboard.schedules?.observe(state.rule.thermostatId, pending.desired, 'manual').catch(() => {});
         delete state.manualTarget;
         return true;
       }
@@ -1357,6 +1361,12 @@ export class ClimateAutomation {
         state.phase = 'waiting';
         state.reason = requirements.join(' ');
       }
+      return;
+    }
+    const schedulePolicy = await this.dashboard.schedules?.ensureRulePolicy(rule.thermostatId);
+    if (schedulePolicy) {
+      state.phase = 'waiting';
+      state.reason = schedulePolicy;
       return;
     }
     const schedule = this.schedule(device, rule.thermostatId);
@@ -1953,6 +1963,7 @@ export class ClimateAutomation {
     await this.heatingResponse.persist(true);
   }
 }
+
 
 
 

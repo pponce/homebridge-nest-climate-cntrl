@@ -1152,3 +1152,24 @@ test('shared rule time zone defaults to host and applies to windows and fan resu
   assert.deepEqual(saved.platforms[1].accounts, state.block.accounts);
   assert.deepEqual(saved.platforms[0], state.root.platforms[0]);
 });
+
+
+test('native schedule writes require authentication, origin and CSRF and propagate rejected changes', async (t) => {
+  const state = await fixture(t);
+  const commands = [];
+  state.dashboard.schedules = { action: async (payload) => { commands.push(payload); return { accepted: true }; } };
+  const server = new WebDashboard({ ...state, platformConfig: state.block });
+  t.after(() => server.stop());
+  await server.auth.setup({ username: 'admin', password: 'test-password' });
+  const login = await call(server, '/api/login', { method: 'POST', body: { username: 'admin', password: 'test-password' } });
+  const request = { method: 'POST', cookie: login.headers['set-cookie'].split(';')[0], csrf: login.data.csrfToken,
+    body: { serial: 'T', expected: 'revision', action: 'auto', value: false } };
+  assert.equal((await call(server, '/api/schedules', { ...request, cookie: undefined })).status, 401);
+  assert.equal((await call(server, '/api/schedules', { ...request, csrf: undefined })).status, 403);
+  assert.equal((await call(server, '/api/schedules', { ...request, origin: 'https://other.local' })).status, 403);
+  assert.equal(commands.length, 0);
+  assert.equal((await call(server, '/api/schedules', request)).data.accepted, true);
+  assert.deepEqual(commands, [request.body]);
+  state.dashboard.schedules.action = async () => { throw new Error('Schedule changed. Refresh before saving.'); };
+  assert.equal((await call(server, '/api/schedules', request)).status, 400);
+});

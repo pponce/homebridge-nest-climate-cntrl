@@ -1,3 +1,4 @@
+import { NestSchedules } from './nest-schedules.js';
 // Authenticated local bridge between the running platform and Homebridge Settings.
 import http from 'node:http';
 import crypto from 'node:crypto';
@@ -27,6 +28,7 @@ const FIELDS = [
   'linked_rcs_sensors',
   'native_sensor_control',
   'schedules',
+  'native_schedules',
   'schedule_mode',
   'schedule_time_zone',
   'schedule_time_zone_source',
@@ -94,6 +96,7 @@ export class ClimateDashboard {
     this.log = log;
     this.devices = new Map();
     this.ledger = new RuntimeLedger();
+    this.schedules = new NestSchedules(this);
     this.lastCommand = null;
     this.busy = false;
     this.saving = Promise.resolve();
@@ -102,6 +105,7 @@ export class ClimateDashboard {
 
   async start() {
     await fs.mkdir(this.directory, { recursive: true, mode: 0o700 });
+    await this.schedules.start();
     try {
       const data = JSON.parse(await fs.readFile(path.join(this.directory, 'runtime.json'), 'utf8'));
       const valid = Object.fromEntries(
@@ -228,6 +232,7 @@ export class ClimateDashboard {
       lastCommand: this.lastCommand,
       devices: [...this.devices.values()].map((device) => ({
         ...device,
+        scheduleControls: device.type === 'Thermostat' ? this.schedules.snapshot(device.serial) : undefined,
         temperatureTarget: device.type === 'Thermostat' ? this.temperatureTarget(device.serial) : undefined,
         runtime: device.type === 'Thermostat' ? this.ledger.summary(device.serial) : undefined,
       })),
@@ -492,6 +497,7 @@ export class ClimateDashboard {
       await new Promise((resolve) => this.server.close(resolve));
     }
     await this.persist();
+    await this.schedules.saving.catch(() => {});
     try {
       const file = path.join(this.directory, 'endpoint.json');
       const endpoint = JSON.parse(await fs.readFile(file, 'utf8'));
@@ -503,6 +509,7 @@ export class ClimateDashboard {
     }
   }
 }
+
 
 
 

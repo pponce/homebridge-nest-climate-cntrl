@@ -1,4 +1,11 @@
 <!-- Modified by pponce for Nest Climate Cntrl; derived from Nest Accfactory. See NOTICE. -->
+## Unreleased
+
+- Add per-thermostat Auto-Schedule controls, an editable native weekly schedule and confirmed clearing of reported temperature schedules on Overview.
+- Temperature rules request Nest Auto-Schedule off by default, while an explicit On override remains available with a room-average compensation warning. Current-session feedback is required for supported learning controls.
+- Learn heating schedule suggestions from intentional room-temperature changes, excluding automatic compensation. Suggestions require approval before saving to Nest and preserve unrelated schedule entries.
+- Preserve unsaved schedule drafts during refresh; reject stale writes and retain uncertain requests across restart without automatically repeating them.
+
 ## v0.6.12-beta.1
 
 **Eco suspension with automatic recovery and fresher Google feedback for climate rules.**
@@ -730,6 +737,7 @@ Apologies for this change, as I can understand what an inconvience and frustrati
 
 - Inital re-coding from Nest_accfactory code base. These projects will now share a common code base
 - Camera/Doorbell support currently removed will re-worked
+
 
 
 

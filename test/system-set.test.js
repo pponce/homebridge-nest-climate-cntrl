@@ -1,3 +1,4 @@
+import { scheduleTrait, readSchedules } from '../src/nest-schedules.js';
 // Modified by pponce for Nest Climate Cntrl; derived from Nest Accfactory. See NOTICE.
 // Exercise cloud SET outcomes through the production routing method and real device commit boundary.
 import assert from 'node:assert/strict';
@@ -19,6 +20,8 @@ let createHost = new Function(
   'DATA_SOURCE',
   'crypto',
   'USER_AGENT',
+  'scheduleTrait',
+  'readSchedules',
   'return new class { climateWrites = new Map();' +
     '#connections = new Map([["account", connection]]); #rawData = rawData;' +
     'run(id, values) { return this.#set("account", id, values); }' +
@@ -58,6 +61,8 @@ function setup(source, response, options = {}) {
     DATA_SOURCE,
     globalThis.crypto,
     'test-agent',
+    scheduleTrait,
+    readSchedules,
   );
   return { run: (values) => host.run(id, values), requests, raw, id };
 }
@@ -189,3 +194,35 @@ for (let [reason, options] of [
   });
 }
 
+
+
+
+test('schedule writes use validated modes and inspect every batch result', async () => {
+  const complete = { progress: 'COMPLETE', status: { code: 0 } };
+  const flow = setup(DATA_SOURCE.GOOGLE, { status: 0, data: [{ traitOperations: [complete, complete] }] });
+  Object.assign(flow.raw[flow.id].value, {
+    heat_schedule_settings: { name: 'Heat', type: 'SET_POINT_SCHEDULE_TYPE_HEAT', setpoints: {} },
+    cool_schedule_settings: { name: 'Cool', type: 'SET_POINT_SCHEDULE_TYPE_COOL', setpoints: {} },
+  });
+  await flow.run({ temperature_schedules: { heat: [{day: 1, time: 25200, heat: 21}], cool: [] } });
+  const request = flow.requests[0][3].batchUpdateStateRequest;
+  assert.equal(request.length, 2);
+  assert.deepEqual(request[0].stateMask.paths, ['setpoints']);
+  assert.equal(request[0].state.value.setpoints[1].heatingTarget.value, 21);
+  assert.equal(typeof request[0].state.value.setpoints[1].currentActorInfo.timeOfAction.seconds, 'number');
+  assert.deepEqual(request[1].state.value.setpoints, {});
+  assert.equal(request[1].state.value.name, 'Cool');
+  const failure = setup(DATA_SOURCE.GOOGLE, { status: 0, data: [{ traitOperations: [complete, { ...complete, status: { code: 7 } }] }] });
+  Object.assign(failure.raw[failure.id].value, flow.raw[flow.id].value);
+  await assert.rejects(failure.run({ temperature_schedules: { heat: [], cool: [] } }), AggregateError);
+});
+test('Auto-Schedule writes only a reported learning trait and preserves explicit false', async () => {
+  const flow = setup(DATA_SOURCE.GOOGLE, {status: 0, data: [{traitOperations: [{progress: 'COMPLETE'}]}]});
+  await assert.rejects(flow.run({schedule_learning_enabled: false}), AggregateError);
+  assert.equal(flow.requests.length, 0);
+  flow.raw[flow.id].value.schedule_learning_settings = {scheduleLearningEnabled: true};
+  await flow.run({schedule_learning_enabled: false});
+  const request = flow.requests[0][3].batchUpdateStateRequest[0];
+  assert.equal(request.state.value.scheduleLearningEnabled, false);
+  assert.deepEqual(request.stateMask.paths, ['scheduleLearningEnabled']);
+});

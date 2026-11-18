@@ -43,7 +43,12 @@ export function climateFeedback(raw, type, generation, data) {
     ready: required.every(current),
     invalidFields,
     generation,
+    schedules: type === 'Thermostat' ? Object.fromEntries(
+      ['schedule_learning_settings', 'heat_schedule_settings', 'cool_schedule_settings', 'range_schedule_settings']
+        .filter((name) => feedback[name]).map((name) => [name, { ...feedback[name] }]),
+    ) : undefined,
     temperatureReceivedAt: feedback.current_temperature?.receivedAt ?? null,
     target: target ? { ...target, stateTypes: [...target.stateTypes] } : null,
   };
 }
+

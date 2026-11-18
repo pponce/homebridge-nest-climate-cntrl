@@ -31,7 +31,7 @@ class ClimateUi extends HomebridgePluginUiServer {
     });
     this.onRequest('/climate', (payload) => {
       const routes = { '/status': ['GET'], '/config': ['GET', 'PUT'], '/config/stage': ['POST'], '/sources': ['GET'],
-        '/command': ['POST'], '/rules/command': ['POST'], '/heating-response': ['GET'],
+        '/command': ['POST'], '/schedules': ['POST'], '/rules/command': ['POST'], '/heating-response': ['GET'],
         '/heating-response/apply': ['POST'], '/bridge/restart': ['GET', 'POST'] };
       if (!payload || !routes[payload.route]?.includes(payload.method) ||
           Object.keys(payload).some((key) => !['route', 'method', 'body'].includes(key))) {
@@ -93,3 +93,4 @@ class ClimateUi extends HomebridgePluginUiServer {
   }
 }
 new ClimateUi();
+

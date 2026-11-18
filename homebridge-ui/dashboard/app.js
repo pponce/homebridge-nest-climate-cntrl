@@ -1,3 +1,4 @@
+import { renderScheduleControls } from '/shared/schedule-controls.js';
 import { occupancyConditionError, occupancyConditionStatus } from '/shared/occupancy-condition.js';
 import { windowDays, windowError, windowSummary, ruleWindow, ruleTimeZone, rulesInTimeZone } from '/shared/rule-window.js';
 import { scheduleOverview, displayTemperature, celsiusTemperature, scheduleTimeZone, selectedNestSensor, temperatureControlView } from '/shared/climate-utils.js';
@@ -736,6 +737,8 @@ function renderThermostats() {
       }
       controls.append(feedback);
     }
+    controls.append(renderScheduleControls(device, { unit: temperatureUnit(), live: state.live,
+      send: (body) => api('/schedules', { method: 'POST', body }), refresh: refreshStatus }));
     controls.append(renderTemperatureController(device, expanded.has(device.serial)));
     for (const setup of state.status.automation?.sensorSetups || []) {
       if (setup.thermostatId !== device.serial) continue;
@@ -2205,4 +2208,5 @@ if (host) {
   await connectionPage.load();
 }
 checkSession();
+
 

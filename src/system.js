@@ -43,6 +43,7 @@
 'use strict';
 
 // Define nodejs module requirements
+import { scheduleTrait, readSchedules } from './nest-schedules.js';
 import { setTimeout, clearTimeout } from 'node:timers';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -1066,6 +1067,10 @@ export default class NestAccfactory {
       throw new Error('Google command transport is unavailable');
     }
 
+    if (['schedule_learning_enabled', 'temperature_schedules'].some((key) => Object.hasOwn(values, key)) &&
+        this.#rawData[nest_google_device_uuid].source !== DATA_SOURCE.GOOGLE) {
+      throw new Error('Native schedule writes require a supported Google thermostat connection');
+    }
     let failures = [];
     for (let [key, value] of Object.entries(values)) {
       try {
@@ -1133,6 +1138,29 @@ export default class NestAccfactory {
               },
             ];
           };
+
+          if (key === 'schedule_learning_enabled') {
+            const native = readSchedules(this.#rawData[nest_google_device_uuid].value);
+            if (typeof value !== 'boolean' || native.autoSchedule === null) throw new Error('Auto-Schedule control unavailable');
+            setUpdateTrait('schedule_learning_settings', 'type.nestlabs.com/nest.trait.hvac.ScheduleLearningSettingsTrait',
+              undefined, { scheduleLearningEnabled: value });
+            updateElement.stateMask = { paths: ['scheduleLearningEnabled'] };
+          }
+          if (key === 'temperature_schedules') {
+            const raw = this.#rawData[nest_google_device_uuid].value;
+            const native = readSchedules(raw);
+            if (!value || typeof value !== 'object' || Array.isArray(value) || !Object.keys(value).length ||
+                Object.keys(value).some((mode) => !Object.hasOwn(native.modes, mode))) {
+              throw new Error('Schedule mode unavailable');
+            }
+            for (const [mode, entries] of Object.entries(value)) {
+              const label = mode + '_schedule_settings';
+              setUpdateTrait(label, 'type.nestlabs.com/nest.trait.hvac.SetPointScheduleSettingsTrait', scheduleTrait(mode, entries, raw[label]));
+              updateElement.stateMask = { paths: ['setpoints'] };
+              updatedTraits.push(structuredClone(updateElement));
+            }
+            updateElement.traitRequest.traitLabel = '';
+          }
 
           if (key === 'eco_mode') {
             if (typeof value !== 'boolean' || this.#rawData[nest_google_device_uuid].value?.eco_mode_state === undefined) {
@@ -1438,8 +1466,9 @@ export default class NestAccfactory {
               batchUpdateStateRequest: updatedTraits,
             });
             let commandResponse = Array.isArray(grpcResult?.data) === true ? grpcResult.data[0] : undefined;
-            let operation = commandResponse?.traitOperations?.[0];
-            if (grpcResult?.status !== 0 || operation?.progress !== 'COMPLETE' || (operation?.status?.code ?? 0) !== 0) {
+            let operations = commandResponse?.traitOperations;
+            if (grpcResult?.status !== 0 || !Array.isArray(operations) || operations.length !== updatedTraits.length ||
+                operations.some((operation) => operation?.progress !== 'COMPLETE' || (operation?.status?.code ?? 0) !== 0)) {
               throw new Error('Google API rejected setting "' + key + '"');
             }
           }
@@ -1633,5 +1662,6 @@ export default class NestAccfactory {
   }
 
 }
+
 
 
