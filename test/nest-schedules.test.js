@@ -425,3 +425,22 @@ test('distinct repeated weekday preferences produce separate chronological sugge
   const result = learningSuggestions(events, 'America/Los_Angeles', Date.parse('2026-11-18T12:00:00Z'));
   assert.deepEqual(result.map((entry) => entry.day), [1, 2]);
 });
+
+test('schedule failures retain safe response details after timeout and restart', async (t) => {
+  const failure = Object.assign(new Error('private response'), {
+    scheduleDiagnostic: 'Google transport status: 0; operations: COMPLETE/7.',
+  });
+  const f = await fixture(t, () => { throw new AggregateError([failure], 'Rejected'); });
+  const warnings = [];
+  f.dashboard.log = { warn: (message) => warnings.push(message) };
+  await assert.rejects(f.manager.action(f.payload('auto', { value: false })), /COMPLETE\/7/);
+  f.advance(61000);
+  assert.match(f.manager.snapshot('test').message, /Auto-Schedule Off request failed.*COMPLETE\/7/);
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0].includes('private response'), false);
+  const restarted = new NestSchedules(f.dashboard, () => Date.parse('2026-11-18T13:00:00Z'));
+  await restarted.start();
+  assert.match(restarted.snapshot('test').message, /COMPLETE\/7/);
+  f.data.native_schedules.autoSchedule = false;
+  assert.equal(restarted.snapshot('test').pending, null);
+});

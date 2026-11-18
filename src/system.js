@@ -1472,7 +1472,16 @@ export default class NestAccfactory {
             let operations = commandResponse?.traitOperations;
             if (grpcResult?.status !== 0 || !Array.isArray(operations) || operations.length !== updatedTraits.length ||
                 operations.some((operation) => operation?.progress !== 'COMPLETE' || (operation?.status?.code ?? 0) !== 0)) {
-              throw new Error('Google API rejected setting "' + key + '"');
+              const error = new Error('Google API rejected setting "' + key + '"');
+              if (['schedule_learning_enabled', 'temperature_schedules'].includes(key)) {
+                // Store status codes only; never expose raw response payloads.
+                const code = (value) => Number.isInteger(value) ? value : 'missing';
+                const progress = (value) => ['QUEUED', 'PENDING', 'STARTED', 'COMPLETE'].includes(value) ? value : 'unknown';
+                error.scheduleDiagnostic = 'Google transport status: ' + code(grpcResult?.status) +
+                  '; operations: ' + (Array.isArray(operations) ? operations.map((item) =>
+                    progress(item?.progress) + '/' + code(item?.status?.code ?? 0)).join(', ') : 'missing') + '.';
+              }
+              throw error;
             }
           }
 

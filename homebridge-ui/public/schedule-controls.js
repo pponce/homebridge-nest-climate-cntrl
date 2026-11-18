@@ -54,7 +54,8 @@ export function renderScheduleControls(device, { unit, live, send, refresh }) {
     status.setAttribute('role', 'status'); body.append(status);
   }
   if (model.pending) {
-    body.append(node('p', 'A request is pending. The On/Off state and schedule below are the last values reported by Nest.', 'small-note'));
+    const request = model.pending.action === 'auto' ? 'Auto-Schedule ' + (model.pending.value ? 'On' : 'Off') : 'a weekly schedule update';
+    body.append(node('p', 'Pending request: ' + request + '. The controls show the last values reported by Nest.', 'small-note'));
     body.append(button('Refresh confirmation', () => void submit({ action: 'check' }), live && !view.busy));
     if (Date.now() - model.pending.at > 60000) body.append(button('I checked Nest; allow retry', () => void submit({ action: 'acknowledge' }), live && !view.busy));
   }

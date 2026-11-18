@@ -281,3 +281,15 @@ test('Auto-Schedule writes only a reported learning trait and preserves explicit
   assert.equal(request.state.value.scheduleLearningEnabled, false);
   assert.deepEqual(request.stateMask.paths, ['scheduleLearningEnabled']);
 });
+
+test('schedule update failures retain transport and operation codes without raw messages', async () => {
+  const flow = setup(DATA_SOURCE.GOOGLE, {
+    status: 0,
+    data: [{ traitOperations: [{ progress: 'COMPLETE', status: { code: 7, message: 'private server payload' } }] }],
+  });
+  flow.raw[flow.id].value.schedule_learning_settings = { scheduleLearningEnabled: true };
+  await assert.rejects(flow.run({ schedule_learning_enabled: false }), (error) => {
+    assert.equal(error.errors[0].scheduleDiagnostic, 'Google transport status: 0; operations: COMPLETE/7.');
+    return true;
+  });
+});

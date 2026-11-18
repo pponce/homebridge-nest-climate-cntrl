@@ -320,7 +320,8 @@ export class NestSchedules {
           record.message = 'Confirmed by Nest; local status could not be saved.';
         });
       } else if (this.now() - pending.at > 60000) {
-        record.message = 'Nest has not confirmed this change. Refresh and check Nest before trying again.';
+        record.message = (pending.failure ? pending.failure + ' ' : '') +
+          'Nest has not confirmed this change. Refresh and check Nest before trying again.';
       }
     }
     return {
@@ -390,7 +391,7 @@ export class NestSchedules {
     } catch {
       record.policyError =
         'Auto-Schedule could not be disabled. Use the thermostat tile to retry or explicitly enable Nest learning.';
-      record.message = record.policyError;
+      record.message ||= record.policyError;
     }
     return record.policyError || 'Waiting for Nest to confirm Auto-Schedule is off.';
   }
@@ -534,7 +535,8 @@ export class NestSchedules {
         delete record.policyError;
       }
       record.pending = pending;
-      record.message = 'Waiting for Nest confirmation.';
+      record.message = pending.action === 'auto' ? 'Requested Nest Auto-Schedule ' +
+        (pending.value ? 'On' : 'Off') + '. Waiting for Nest confirmation.' : 'Requested schedule update. Waiting for Nest confirmation.';
       await this.persist();
       const guard = () => this.connected(serial) && hash(this.native(serial)) === expected;
       await this.dashboard.command(this.dashboard.devices.get(serial).id, values, {
@@ -552,10 +554,16 @@ export class NestSchedules {
         message: record.message,
       };
     } catch (error) {
-      record.message = 'Schedule change could not be confirmed. Check Nest before retrying.';
+      const failures = error instanceof AggregateError ? error.errors : [error];
+      const diagnostics = failures.map((failure) => failure?.scheduleDiagnostic).filter((detail) => typeof detail === 'string');
+      const requested = pending.action === 'auto' ? 'Nest Auto-Schedule ' + (pending.value ? 'On' : 'Off') : 'Nest schedule update';
+      pending.failure = requested + ' request failed. ' + (diagnostics.join(' ') ||
+        'No usable Google write response was received; delivery is uncertain.');
+      record.message = pending.failure + ' Check Nest before retrying.';
+      this.dashboard.log?.warn?.(pending.failure);
       // Retain uncertain intent; feedback may still arrive after a transport failure.
       await this.persist().catch(() => {});
-      throw error;
+      throw new Error(record.message);
     } finally {
       this.busy.delete(serial);
     }
