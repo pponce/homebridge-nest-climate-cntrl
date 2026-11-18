@@ -39,6 +39,9 @@ export function scheduleResponseReport(response, secrets = []) {
     if (++count > 10000 || depth > 30) {
       return '[diagnostic limit reached]';
     }
+    if (/-bin$/i.test(key)) {
+      return '[binary metadata omitted; see decodedStatusDetails when available]';
+    }
     if (/token|authorization|cookie|password|secret|credential|resourceId|requestId|serial|email|accountId/i.test(key)) {
       return '[redacted]';
     }

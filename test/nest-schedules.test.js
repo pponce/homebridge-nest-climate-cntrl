@@ -472,13 +472,14 @@ test('complete response reports preserve frames, operation details and metadata 
     data: [{ traitOperations: [{ status: { code: 13, message: 'unsupported field',
       details: [{ type_url: 'type.googleapis.com/google.rpc.BadRequest', value: { field: 'stateMask', reason: 'invalid' } }] },
     traitRequest: { resourceId: 'device-private', requestId: 'request-private' } }] }, { extra: true }],
-    trailers: { 'grpc-status': '0' }, token: 'private', missing: undefined, binary: Buffer.from('private') };
+    trailers: { 'grpc-status': '0', 'private-bin': 'c2VjcmV0' }, token: 'private', missing: undefined, binary: Buffer.from('private') };
   const report = scheduleResponseReport(response);
   assert.equal(report.data.length, 2);
   assert.equal(report.data[0].traitOperations[0].status.details[0].value.field, 'stateMask');
   assert.equal(report.headers[':status'], 200);
   assert.equal(report.headers['set-cookie'], '[redacted]');
   assert.equal(report.missing, '[not supplied]');
+  assert.match(report.trailers['private-bin'], /binary metadata omitted/);
   assert.equal(report.binary.length, 7);
   assert.equal(JSON.stringify(report).includes('private'), false);
   const circular = {};
