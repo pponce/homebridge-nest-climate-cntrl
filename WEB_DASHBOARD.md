@@ -512,3 +512,10 @@ When an occupancy condition stops matching, another eligible rule can take over,
 An accepted fan command waits for the fan's reported power or speed. The rule shows **Recovering feedback** after two minutes if the previous state is still reported. It continues checking readings without repeating the accepted command and resumes when matching feedback arrives. A speed command may report power before speed; those separate updates are allowed. Saved speed ranges treat percentages within the same physical setting as equivalent.
 
 A conflicting setting suspends automatic control for that fan until **Resume**. A suspension created by an older release still requires one Resume after reviewing the reported settings, because it may represent a deliberate change. Confirmed and conflicting commands replace the pending message in execution status.
+
+
+### Temperature control during Eco
+
+Temperature rules temporarily suspend adjustments while Nest Eco is active. When Eco ends, control resumes automatically after the thermostat is in Heat mode and current readings and sensor settings are ready. The rule follows the current Nest schedule target when one is available, while retaining its adjustment limits and minimum update interval.
+
+Turn on **Require Resume after Eco** in the temperature rule to keep control paused until you select Resume. This option is off by default. A rule explicitly paused by you always requires Resume, regardless of this setting.

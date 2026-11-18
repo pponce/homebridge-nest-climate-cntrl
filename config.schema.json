@@ -364,6 +364,13 @@
                                         "average"
                                     ]
                                 },
+                                "ecoBehavior": {
+                                    "type": "string",
+                                    "title": "When Nest enters Eco",
+                                    "enum": ["suspend", "pause"],
+                                    "default": "suspend",
+                                    "description": "Suspend resumes automatically after Eco ends. Pause requires Resume."
+                                },
                                 "manualTargetBehavior": {
                                     "type": "string",
                                     "enum": [
@@ -1227,6 +1234,9 @@
                             "key": "climateRuleDrafts.temperature[].aggregation"
                         },
                         {
+                            "key": "climateRuleDrafts.temperature[].ecoBehavior"
+                        },
+                        {
                             "key": "climateRuleDrafts.temperature[].manualTargetBehavior"
                         },
                         {
@@ -1369,3 +1379,4 @@
     ],
     "customUi": true
 }
+

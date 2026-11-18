@@ -113,6 +113,7 @@ export function validateRuleDrafts(value) {
         'enabled',
         'desiredTemperature',
         'manualTargetBehavior',
+        'ecoBehavior',
         'maximumOffset',
         'minimumIntervalMinutes',
         'startGap',
@@ -156,6 +157,7 @@ export function validateRuleDrafts(value) {
       for (const [field, choices] of [
         ['aggregation', ['single', 'average']],
         ['manualTargetBehavior', ['follow', 'pause']],
+        ['ecoBehavior', ['suspend', 'pause']],
         ['logic', ['any', 'all']],
         ['action', ['heating', 'cooling', 'temperature', speedAction]],
         ['speedMode', ['last', 'fixed', 'curve']],
@@ -492,4 +494,5 @@ export class WebDashboardConfig {
     return this.snapshot();
   }
 }
+
 

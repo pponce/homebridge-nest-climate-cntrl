@@ -1667,6 +1667,7 @@ function renderRuleEditor() {
     const inputs = editorSection(host, '02', 'Choose your temperature sources', 'Only selected readings count toward the room average. Include the controlled thermostat here if you want its temperature counted; you can also use only other room sensors. Automatic control requires Heat mode, Eco off and Nest’s built-in control sensor.');
     ruleInputField(inputs, 'Combine readings', rule.aggregation || 'average', (value) => { rule.aggregation = value; }, { choices: [['average', 'Equal average of selected sensors'], ['single', 'One selected sensor']] }); picker(inputs, rule, 'sourceIds', ['temperature']);
     const limits = editorSection(host, '03', 'Limit thermostat adjustments', 'The desired room temperature stays separate from Nest’s adjusted target. Choose how manual Nest target changes affect the group. A confirmed scheduled target becomes the new room target. If Homebridge stops or loses its connection, Nest may retain the last bounded target.');
+    toggle(limits, 'Require Resume after Eco', 'Off temporarily suspends temperature control during Eco and resumes after Eco ends and fresh readings are available. On keeps control paused until you press Resume.', rule.ecoBehavior === 'pause', (value) => { rule.ecoBehavior = value ? 'pause' : 'suspend'; });
     toggle(limits, 'Pause after a manual Nest target change', 'Off keeps the selected sensor group active and adjusts its desired room temperature by the same increase or decrease. On pauses all temperature groups for this thermostat until you Resume automatic control.', rule.manualTargetBehavior === 'pause', (value) => { rule.manualTargetBehavior = value ? 'pause' : 'follow'; }, () => ruleFieldHelp('Pause after a manual Nest target change', rule));
     const tuningLink = el('a', 'Review heating response & tuning in Settings', 'small-note'); tuningLink.href = '#settings'; limits.append(tuningLink);
     temperatureField(limits, 'Maximum target adjustment', rule.maximumOffset ?? 1.5, (value) => { rule.maximumOffset = value; }, { min: 0, max: 3, difference: true });
@@ -2204,3 +2205,4 @@ if (host) {
   await connectionPage.load();
 }
 checkSession();
+

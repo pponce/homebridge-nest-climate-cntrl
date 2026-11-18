@@ -317,7 +317,7 @@ test('an idle thermostat without a paired-sensor list can run a built-in and Hom
 test('waiting temperature rules identify the actual unmet requirements', async (t) => {
   for (const [change, expected] of [
     [{ hvac_mode: 'off' }, 'Select Heat mode on Nest.'],
-    [{ eco_mode: true }, 'Turn Eco off on Nest.'],
+    [{ eco_mode: true }, 'Nest Eco is active.'],
     [{ temperature_lock: true }, 'Turn off the Nest temperature lock.'],
     [{ can_heat: false }, 'This thermostat does not report support for heating.'],
     [{ active_rcs_sensor: 'other' }, 'Select the built-in Nest temperature sensor.'],
@@ -757,7 +757,7 @@ test('Eco, Off, native sensor changes and loss of observation never trigger comp
     f.dashboard.update('T', 'Thermostat', change, 'A');
     f.advance(5 * minute);
     await f.engine.tick();
-    assert.equal(f.rule('rooms').paused, true);
+    assert.equal(f.rule('rooms').paused, change.eco_mode !== true);
     assert.equal(f.commands.length, 1);
   }
   const f = await fixture(t);
@@ -1978,7 +1978,7 @@ test('native mode changes during feedback recovery still pause before any new he
     assert.equal(f.rule('rooms').temperatureControl, 'recovering');
     f.dashboard.update('T', 'Thermostat', { target_temperature_low: 22.5, ...change }, 'A');
     await f.engine.tick();
-    assert.equal(f.rule('rooms').paused, true);
+    assert.equal(f.rule('rooms').paused, change.eco_mode !== true);
     assert.equal(f.commands.length, 1);
   }
 });
@@ -2152,14 +2152,15 @@ test('a graceful bridge stop retains unresolved heating feedback instead of retr
   }
 });
 
-test('changed native modes during downtime remain a reason to pause', async (t) => {
+test('Eco during downtime suspends without requiring manual Resume', async (t) => {
   const f = await fixture(t);
   await f.engine.tick();
   await f.engine.persist();
   f.dashboard.update('T', 'Thermostat', { eco_mode: true }, 'A');
   const count = f.commands.length;
   const restarted = await restartFixture(f);
-  assert.equal(restarted.snapshot().rules[0].paused, true);
+  assert.equal(restarted.snapshot().rules[0].paused, false);
+  assert.match(restarted.snapshot().rules[0].reason, /Eco is active/);
   assert.equal(f.commands.length, count);
   await restarted.stop();
 });
@@ -3026,3 +3027,106 @@ test('shared time zone controls live windows and recomputes daily holds using ho
   assert.equal(f.fanCommands.length, 1);
 });
 
+
+test('Eco suspends by default and recovers without sending writes during Eco', async (t) => {
+  const f = await fixture(t);
+  await f.engine.tick();
+  const count = f.commands.length;
+  f.dashboard.update('T', 'Thermostat', { eco_mode: true, hvac_mode: 'ecoheat', target_temperature_low: 16 }, 'A');
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').paused, false);
+  assert.match(f.rule('rooms').reason, /resume automatically/);
+  f.advance(10 * minute);
+  await f.engine.tick();
+  assert.equal(f.commands.length, count);
+  f.dashboard.update('T', 'Thermostat', { eco_mode: false, hvac_mode: 'heat', target_temperature_low: 20 }, 'A');
+  f.accounts[0].observing = false;
+  await f.engine.tick();
+  assert.equal(f.commands.length, count);
+  f.accounts[0].observing = true;
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').paused, false);
+  assert.equal(f.commands.length, count + 1);
+  assert.equal(f.rule('rooms').desiredTemperature, temperatureRule.desiredTemperature);
+});
+
+test('Eco pause option and explicit manual pause never recover automatically', async (t) => {
+  for (const manual of [false, true]) {
+    const f = await fixture(t, { temperature: [{ ...temperatureRule, ecoBehavior: manual ? 'suspend' : 'pause' }] });
+    f.dashboard.update('T', 'Thermostat', { eco_mode: true }, 'A');
+    await f.engine.tick();
+    if (manual) {
+      await f.engine.control({ id: 'rooms', action: 'pause' });
+    }
+    const count = f.commands.length;
+    f.dashboard.update('T', 'Thermostat', { eco_mode: false }, 'A');
+    f.advance(10 * minute);
+    await f.engine.tick();
+    assert.equal(f.rule('rooms').paused, true);
+    assert.equal(f.commands.length, count);
+  }
+});
+
+test('Eco recovery adopts the current schedule room target without applying an Eco delta', async (t) => {
+  const f = await fixture(t);
+  f.devices.push({ serialNumber: 'T', scheduleTimeZone: 'UTC' });
+  f.dashboard.update('T', 'Thermostat', { eco_mode: true, target_temperature_low: 15 }, 'A');
+  await f.engine.tick();
+  f.advance(10 * minute);
+  f.dashboard.update('T', 'Thermostat', { eco_mode: false, hvac_mode: 'heat', target_temperature_low: 19,
+    schedules: { 0: { a: { time: 0, 'temp-min': 19 } } } }, 'A');
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').paused, false);
+  assert.equal(f.rule('rooms').desiredTemperature, 19);
+});
+
+test('Eco commands through the plugin wait for feedback and failed commands require Resume', async (t) => {
+  const f = await fixture(t);
+  await f.engine.tick();
+  const count = f.commands.length;
+  const requests = await f.engine.manualThermostat('thermostat', { eco_mode: true });
+  await f.engine.manualThermostatResult(requests, true);
+  await f.engine.tick();
+  assert.match(f.rule('rooms').reason, /requested Eco change/);
+  assert.equal(f.commands.length, count);
+  f.dashboard.update('T', 'Thermostat', { eco_mode: true }, 'A');
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').paused, false);
+  const off = await f.engine.manualThermostat('thermostat', { eco_mode: false });
+  await f.engine.manualThermostatResult(off, false);
+  assert.equal(f.rule('rooms').paused, true);
+});
+
+test('Eco policy validation accepts both choices and rejects unsupported values', () => {
+  for (const ecoBehavior of ['suspend', 'pause']) {
+    assert.equal(validateRuleDrafts({ temperature: [{ ...temperatureRule, ecoBehavior }] }).temperature[0].ecoBehavior, ecoBehavior);
+  }
+  assert.throws(() => validateRuleDrafts({ temperature: [{ ...temperatureRule, ecoBehavior: 'invalid' }] }));
+});
+
+test('Eco suspension survives restart and recovers automatically after Eco ends', async (t) => {
+  const f = await fixture(t);
+  f.dashboard.update('T', 'Thermostat', { eco_mode: true }, 'A');
+  await f.engine.tick();
+  await f.engine.persist();
+  const restarted = await restartFixture(f);
+  const count = f.commands.length;
+  assert.equal(restarted.snapshot().rules[0].paused, false);
+  f.advance(10 * minute);
+  f.dashboard.update('T', 'Thermostat', { eco_mode: false, target_temperature_low: 20 }, 'A');
+  await restarted.tick();
+  assert.equal(restarted.snapshot().rules[0].paused, false);
+  assert.equal(f.commands.length, count + 1);
+  await restarted.stop();
+});
+
+test('Eco recovery still respects a temperature lock and requires explicit Resume for the conflict', async (t) => {
+  const f = await fixture(t);
+  f.dashboard.update('T', 'Thermostat', { eco_mode: true }, 'A');
+  await f.engine.tick();
+  const count = f.commands.length;
+  f.dashboard.update('T', 'Thermostat', { eco_mode: false, temperature_lock: true }, 'A');
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').paused, true);
+  assert.equal(f.commands.length, count);
+});

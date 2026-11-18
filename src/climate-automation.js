@@ -1057,6 +1057,9 @@ export class ClimateAutomation {
   }
 
   resetTemperatureTarget(state) {
+    delete state.ecoCommandPending;
+    delete state.ecoAwaitingOn;
+    delete state.ecoSuspended;
     delete state.roomTarget;
     delete state.manualTarget;
     delete state.scheduleTarget;
@@ -1249,6 +1252,19 @@ export class ClimateAutomation {
     this.pause(state, reason);
   }
 
+  suspendEco(state) {
+    this.leases.delete('temperature:' + state.rule.thermostatId);
+    delete state.manualTarget;
+    delete state.scheduleTarget;
+    if (!state.ecoSuspended) {
+      state.targetEpoch = (state.targetEpoch ?? 0) + 1;
+    }
+    state.ecoSuspended = true;
+    state.phase = 'waiting';
+    state.temperatureControl = 'waiting';
+    state.reason = 'Nest Eco is active. Temperature control will resume automatically after Eco ends and current readings are available.';
+  }
+
   async temperature(state) {
     // Reporting only: distinguish an applied rule's interval/feedback wait from a rule that cannot run.
     state.temperatureControl = 'waiting';
@@ -1268,6 +1284,27 @@ export class ClimateAutomation {
       state.reason = lease?.feedbackRefreshed ?
         'Refreshing Nest feedback to confirm the accepted heating target. The temperature command is not repeated.' :
         'Thermostat connection unavailable. Nest may retain its last target.';
+      return;
+    }
+    if (state.ecoCommandPending || state.ecoAwaitingOn) {
+      if (device.data.eco_mode === true && !state.ecoCommandPending) {
+        delete state.ecoAwaitingOn;
+      } else {
+        state.phase = 'waiting';
+        state.reason = 'Waiting for Nest to report the requested Eco change.';
+        if (this.now() - state.ecoRequestAt >= ACK_TIMEOUT) {
+          this.pause(state, 'Nest did not report the requested Eco change. Review Nest, then Resume.');
+        }
+        return;
+      }
+    }
+    if (device.data.eco_mode === true) {
+      if (rule.ecoBehavior === 'pause') {
+        this.leases.delete(key);
+        this.pause(state, 'Nest Eco is active. Resume temperature control when Eco is off.');
+      } else {
+        this.suspendEco(state);
+      }
       return;
     }
     if (!this.sensorSetup.permits(rule)) {
@@ -1328,6 +1365,21 @@ export class ClimateAutomation {
       state.phase = 'waiting';
       state.reason = 'Nest has not reported a usable schedule time zone. Choose this thermostat’s time zone in Settings.';
       return;
+    }
+    if (state.ecoSuspended) {
+      // Reconcile the current schedule without treating the Eco target as a manual room adjustment.
+      state.referenceTarget = target(device);
+      if (validTarget(schedule.desired)) {
+        state.controlStarted = true;
+        state.scheduleTarget ??= { expected: schedule.desired, at: this.now(), priorTargets: [target(device)] };
+        state.scheduleKey = schedule.position;
+        state.scheduleSignature = schedule.signature;
+        state.scheduleDesired = schedule.desired;
+        state.scheduleZone = schedule.zone;
+      } else {
+        state.controlStarted = false;
+      }
+      delete state.ecoSuspended;
     }
     if (!this.temperatureSchedule(state, device, schedule)) {
       return;
@@ -1689,6 +1741,17 @@ export class ClimateAutomation {
     for (const state of this.states.values()) {
       const device = this.dashboard.devices.get(state.rule.thermostatId);
       if (state.rule.kind === 'temperature' && state.rule.enabled && state.controlOwner && device?.id === deviceId) {
+        const onlyEco = typeof values?.eco_mode === 'boolean' &&
+          Object.keys(values).every((key) => ['uuid', 'eco_mode'].includes(key));
+        if (onlyEco && state.rule.ecoBehavior !== 'pause' && !state.paused) {
+          this.suspendEco(state);
+          state.ecoCommandPending = true;
+          state.ecoRequestAt = this.now();
+          state.ecoAwaitingOn = values.eco_mode;
+          requests.push({ id: state.rule.id, eco: true });
+          changed = true;
+          continue;
+        }
         const requested = values?.target_temperature_low ?? values?.target_temperature;
         const onlyTarget = values && Object.keys(values).every((key) =>
           ['uuid', 'target_temperature', 'target_temperature_low'].includes(key));
@@ -1741,6 +1804,18 @@ export class ClimateAutomation {
 
   async manualThermostatResult(requests, accepted) {
     for (const request of requests ?? []) {
+      if (request.eco) {
+        const state = this.states.get(request.id);
+        if (state) {
+          delete state.ecoCommandPending;
+          if (!accepted) {
+            delete state.ecoAwaitingOn;
+            this.pause(state, 'The Eco command failed. Review Nest, then Resume temperature control.');
+          }
+        }
+        continue;
+      }
+
       const state = [...this.states.values()].find((entry) => entry.manualTarget === request.pending);
       if (!state) {
         continue;
