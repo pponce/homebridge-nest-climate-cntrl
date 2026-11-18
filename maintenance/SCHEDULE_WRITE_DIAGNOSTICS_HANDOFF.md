@@ -29,3 +29,11 @@ Investigate native Auto-Schedule writes before choosing a fallback. On beta.2, b
 4. Collect the dashboard's diagnostic message and schedule warning from the Homebridge log; no credentials or raw account payloads.
 5. Use the returned status to determine rejection, transport failure or confirmation failure. Do not silently retry writes.
 6. Validate a supported correction on the device, or implement the agreed fallback if the investigation cannot establish reliable write support.
+
+## Complete-response diagnostic checkpoint
+- Live downstairs result: transport status 0, operation COMPLETE/13. Off did not take effect. Reads from Nest work. This establishes an operation-level internal error, not a successful write awaiting feedback.
+- Current diagnostic source adds the complete redacted decoded response, all frames and operations, headers/trailers, known Any error-detail decoding and Google's standard error detail schemas. Unknown binary details and diagnostic limits are explicitly marked. Raw binary metadata is omitted alongside decoded status details.
+- The last response persists after timeout/restart and external confirmation. Overview provides a read-only JSON view and Download response JSON. Failure wording distinguishes retained failed intent from an outstanding request. The native write payload is unchanged.
+- 45 focused tests pass. Final code commit 83a9057c6d1fab9bcfe2a9baf123424b2e2be283 passed all six runtime combinations and both browser suites, including response viewing and JSON download. CI runs: 44254843162 and 44254843125.
+- Next test: install the final tested pinned diagnostic revision, reload Overview, clear the old pending lock after checking Nest, attempt downstairs Off once, then download nest-schedule-response.json from Last Nest write response (redacted). No broad logs or account dump are needed.
+- Do not claim the native control works until a live correction is verified. The agreed read-only/local-schedule fallback remains deferred while investigating this response.
