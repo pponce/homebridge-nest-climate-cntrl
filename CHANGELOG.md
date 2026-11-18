@@ -1,4 +1,30 @@
 <!-- Modified by pponce for Nest Climate Cntrl; derived from Nest Accfactory. See NOTICE. -->
+## v0.6.12-beta.1
+
+**Eco suspension with automatic recovery and fresher Google feedback for climate rules.**
+
+### Functional changes
+- Temperature rules temporarily suspend while Nest reports Eco and recover automatically when Eco ends and current readings and control requirements permit. No compensating heating target is sent during Eco.
+- Enable **Require Resume after Eco** on a temperature rule to keep it paused until you resume it. The default is automatic recovery, including for existing rules without this option.
+- Recovery uses the current Nest schedule target when available, retains room-temperature intent otherwise, and respects the adjustment interval. Explicit user pauses and conflicts involving mode, lock or active sensor still require review.
+- Direct Eco requests wait for reported Eco state; rejected requests and unconfirmed requests that time out pause for review.
+
+### Fixes
+- After Google reconnects, climate control waits for the required traits from the current Observe session. A partial update cannot make cached readings ready prematurely.
+- Explicit invalid readings clear affected dashboard values; ordinary deltas preserve fields they omit. Room sensors and Home/Away feedback also require current-session data.
+- Callbacks from retired Observe sessions cannot overwrite current feedback, including when a transport is reused.
+- Preserve trait receipt times, state types and version metadata. Heating feedback is described as **Matching heating target reported by Google**, without implying independently verified physical-device execution.
+
+### Regression coverage
+- Tests cover partial and invalid updates, reconnect recovery, retired callbacks, room-sensor and Home/Away freshness, accepted matching-target feedback and full platform delivery.
+- Eco tests cover default suspension/recovery, opt-in Resume, explicit pauses, fresh-data requirements, schedule recovery, direct-command success/failure, restart recovery and lock conflicts.
+- Validation includes lint, coverage, build, migration and package checks across Node 22/24/26 and the supported Homebridge matrix, plus dashboard/browser checks. Release packaging also exercises installer and npm-publisher success and failure paths.
+- Hardware and live Google/Nest backend behavior have not been verified by these automated tests.
+
+**Updating:** Reload the dashboard after updating. An already-paused rule requires **Resume** once; ambiguous saved pauses are not automatically cleared. Future Eco periods use the selected recovery policy. Existing accessory pairing is retained.
+
+This is a GitHub prerelease. npm publication uses the **beta** channel.
+
 ## v0.6.11
 
 - Clarify the temperature-based fan speed fields and help: the calculated percentage rises between the configured temperatures, while mapped fans change physical speed at their mapped boundaries.
@@ -704,6 +730,7 @@ Apologies for this change, as I can understand what an inconvience and frustrati
 
 - Inital re-coding from Nest_accfactory code base. These projects will now share a common code base
 - Camera/Doorbell support currently removed will re-worked
+
 
 
 
