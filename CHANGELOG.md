@@ -1,10 +1,29 @@
 <!-- Modified by pponce for Nest Climate Cntrl; derived from Nest Accfactory. See NOTICE. -->
-## Unreleased
+## v0.6.12-beta.3
 
-- Keep Overview thermostat tiles in alphabetical order and place temperature schedule controls below each tile's temperature controller.
-- Preserve open weekly schedule drafts when Auto-Schedule or a different schedule mode changes. Changes to the schedule being edited still require review before saving.
-- Refresh local dashboard status every two seconds while schedule changes await confirmation, for up to one minute. Show failed requests separately and provide downloadable redacted Nest write responses.
-- Use the native protobuf field name when changing Auto-Schedule.
+**More reliable schedule controls and a consistent Overview layout.**
+
+### Schedule controls
+- Send Nest Auto-Schedule On/Off requests with the native protobuf field mask expected by Google.
+- Keep open weekly schedule drafts usable when Auto-Schedule or another schedule mode changes. Saving still requires review if the weekly schedule being edited has changed.
+- Check local dashboard status every two seconds while a schedule request awaits confirmation, for up to one minute. Google acceptance and reported thermostat state remain separate; a request is complete only after matching fresh feedback.
+- Identify failed requests clearly and retain them for review without automatic replay.
+- View and download the complete redacted Nest write response, including decoded operation details and transport metadata. The last response remains available after confirmation or restart; omitted binary data and diagnostic limits are marked explicitly.
+
+### Overview
+- Display thermostat tiles alphabetically, with a stable device identifier resolving duplicate names.
+- Place **Temperature schedule · Nest Auto-Schedule** directly below each thermostat's **Temperature controlled by** box.
+
+### Validation and beta scope
+- Validation covers scoped schedule conflicts, queued-write guards, native request fields, redacted response handling, pending-request polling, tile order and responsive dashboard behavior.
+- Release checks include lint, coverage and build checks across six Node/Homebridge combinations, dashboard browser checks, package installation, and installer/publisher success and failure paths.
+- Schedule clearing, entry deletion and approved suggestion writes still require device-specific validation. Automated tests do not establish physical thermostat behavior.
+
+**Updating:** Reload the dashboard after installation. Reopen any schedule editor that was already open during the update. Turning Nest Auto-Schedule off stops learning but preserves the existing weekly schedule. Room-temperature preference learning remains optional and saves suggestions to Nest only after approval.
+
+See the [dashboard guide](https://github.com/pponce/homebridge-nest-climate-cntrl/blob/v0.6.12-beta.3/WEB_DASHBOARD.md).
+
+This is a GitHub prerelease. The attached package can be installed directly for testing.
 
 ## v0.6.12-beta.2
 
