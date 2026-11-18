@@ -22,12 +22,15 @@ Add Overview thermostat controls for Nest Auto-Schedule, editable weekly schedul
 - Authentication/origin/CSRF route coverage, wire-request construction tests and integration coverage through the existing climate engine.
 
 ## Verification
-- Focused schedule, feedback, climate engine/dashboard, system SET and web route suites: 236 tests passed.
-- Latest full test run before the final extra route test: 923 passed; 16 suites could not load missing homebridge, chalk or protobufjs dependencies.
-- npm install --ignore-scripts failed with HTTP 403 from the package registry. Lint/full coverage remain unverified.
-- Build and bundled-license/camera-exclusion checks passed. Syntax and whitespace checks passed.
-- Browser check is prepared at maintenance/checks/schedule-controls-browser.mjs. Playwright's bundled browser is absent; the installed Chromium fails with socket Operation not permitted. No visual or browser-interaction pass is claimed.
-- Live Nest/Google acceptance and physical device behavior are NOT verified. Readable traits do not establish write permission. This change belongs in a draft PR until validation is completed.
+- Tested code commit: 94622a3e9df698571a27e5bbef76ae482f98aab8.
+- Draft PR: https://github.com/pponce/homebridge-nest-climate-cntrl/pull/39
+- Focused schedule, feedback, climate engine/dashboard, system SET and web route suites: 244 tests passed.
+- GitHub Test run 44238505713 passed all six Node/Homebridge combinations (Node 22/24/26 with Homebridge 1.11.4/2.4.0/2.5.0 as configured), including lint, coverage, build, migration and package checks. Dashboard browser job passed.
+- Standalone climate dashboard run 44238505882 passed server and browser jobs; optional visual-review job was skipped.
+- New schedule module coverage: 97.87% lines, 92.64% branches, 94.12% functions; reviewed baseline adds this module without lowering existing floors.
+- Schedule browser coverage includes phone-width layout, enable confirmation, Fahrenheit editing, draft retention, clear cancellation, missing-mode toggle and no page errors.
+- Local dependency/browser restrictions were resolved for verification by using the existing CI environment.
+- Live Nest/Google acceptance and physical device behavior are NOT verified. Readable traits do not establish write permission. This change remains a draft until device validation is completed.
 
 ## Important decisions
 - Preserve existing native schedules when disabling learning.
@@ -39,9 +42,8 @@ Add Overview thermostat controls for Nest Auto-Schedule, editable weekly schedul
 - No backups were created.
 
 ## Exact next steps
-1. Run npm install --ignore-scripts in an environment with package access; run npm run check with the supported Node/Homebridge versions.
-2. Run the browser check with Playwright installed (optional CHROMIUM_PATH for an available browser). Verify mobile and desktop rendering in the complete application, including Homebridge embedding.
-3. On an explicitly selected test thermostat, verify learning toggle writes and current-session reported feedback. Test a reviewed schedule edit, then removal of a test entry. Do not clear a live weekly schedule merely to validate the endpoint.
-4. Verify whether replacing setpoints removes old map keys on the actual backend. An unchanged map must remain unconfirmed; do not claim reset support until observed.
-5. Verify suggestion approval preserves all unrelated schedule entries and native room-average compensation still adopts a confirmed scheduled target.
-6. Resolve any failures, then prepare a beta only when requested. Ask before npm publication.
+1. On an explicitly selected test thermostat, verify learning toggle writes and current-session reported feedback. Test a reviewed schedule edit, then removal of a test entry. Do not clear a live weekly schedule merely to validate the endpoint.
+2. Verify whether replacing setpoints removes old map keys on the actual backend. An unchanged map must remain unconfirmed; do not claim reset support until observed.
+3. Verify suggestion approval preserves all unrelated schedule entries and native room-average compensation still adopts a confirmed scheduled target.
+4. Review the full application on the installed thermostat configuration, including Homebridge embedding.
+5. Resolve any failures, then prepare a beta only when requested. Ask before npm publication.
