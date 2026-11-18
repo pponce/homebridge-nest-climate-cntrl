@@ -15,7 +15,8 @@ export async function checkRuleExplanations(page, output, label) {
     const sources = [25, 26].map((temperature, index) => ({ id: 'sensor-' + index,
       name: index ? 'Dining sensor' : 'Living sensor <script>', kind: 'temperature', available: true, temperature, lastReadAt: now }));
     const fan = { id: 'living-fan', name: 'Living room fan', available: true, running: true, speed: 50,
-      lastReadAt: now, controllerId: 'fan-1', ownerId: 'fan-1', supportedSpeed: 50,
+      // A discovery-only update can be newer than the fan reading retained by rule evaluation.
+      lastReadAt: mode === 'source-off' ? now - 60000 : now, controllerId: 'fan-1', ownerId: 'fan-1', supportedSpeed: 50,
       pending: mode === 'pending', requested: { running: true, speed: 75 } };
     const thermostat = snapshot.devices.find((device) => device.type === 'Thermostat');
     if (thermostat) {
@@ -250,3 +251,4 @@ export async function checkRuleExplanations(page, output, label) {
     await refresh();
   }
 }
+
