@@ -37,3 +37,9 @@ Investigate native Auto-Schedule writes before choosing a fallback. On beta.2, b
 - 45 focused tests pass. Final code commit 83a9057c6d1fab9bcfe2a9baf123424b2e2be283 passed all six runtime combinations and both browser suites, including response viewing and JSON download. CI runs: 44254843162 and 44254843125.
 - Next test: install the final tested pinned diagnostic revision, reload Overview, clear the old pending lock after checking Nest, attempt downstairs Off once, then download nest-schedule-response.json from Last Nest write response (redacted). No broad logs or account dump are needed.
 - Do not claim the native control works until a live correction is verified. The agreed read-only/local-schedule fallback remains deferred while investigating this response.
+
+## Field-mask correction
+- Live full-description result: COMPLETE/13 with `No such field scheduleLearningEnabled on type ...`.
+- Binary protobuf FieldMask paths use server proto field names, whereas the JS value is encoded by field number. Change only the mask path to `schedule_learning_enabled`; retain the JS value `scheduleLearningEnabled`.
+- Evidence: https://protobuf.dev/programming-guides/json/ describes the snake_case-to-camelCase conversion as a JSON representation rule. This connection uses binary gRPC, with the paths strings encoded literally.
+- Tests exercise both On and Off payloads. Live Nest acceptance still requires verification after installing the corrected revision.

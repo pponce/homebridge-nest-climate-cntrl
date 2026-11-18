@@ -1147,7 +1147,8 @@ export default class NestAccfactory {
             }
             setUpdateTrait('schedule_learning_settings', 'type.nestlabs.com/nest.trait.hvac.ScheduleLearningSettingsTrait',
               undefined, { scheduleLearningEnabled: value });
-            updateElement.stateMask = { paths: ['scheduleLearningEnabled'] };
+            // Binary FieldMask paths use server proto names, not the JS property names used above.
+            updateElement.stateMask = { paths: ['schedule_learning_enabled'] };
           }
           if (key === 'temperature_schedules') {
             const raw = this.#rawData[nest_google_device_uuid].value;

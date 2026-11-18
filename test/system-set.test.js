@@ -283,7 +283,11 @@ test('Auto-Schedule writes only a reported learning trait and preserves explicit
   });
   const request = flow.requests[0][3].batchUpdateStateRequest[0];
   assert.equal(request.state.value.scheduleLearningEnabled, false);
-  assert.deepEqual(request.stateMask.paths, ['scheduleLearningEnabled']);
+  assert.deepEqual(request.stateMask.paths, ['schedule_learning_enabled']);
+  await flow.run({ schedule_learning_enabled: true });
+  const enabled = flow.requests[1][3].batchUpdateStateRequest[0];
+  assert.equal(enabled.state.value.scheduleLearningEnabled, true);
+  assert.deepEqual(enabled.stateMask.paths, ['schedule_learning_enabled']);
 });
 
 test('schedule update failures retain transport and operation codes with a redacted error description', async () => {
