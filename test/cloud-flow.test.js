@@ -7,6 +7,7 @@ import { setImmediate } from 'node:timers/promises';
 import test from 'node:test';
 import { importSource } from './helpers/import-source.js';
 import HomeKitDevice from '../src/HomeKitDevice/HomeKitDevice.js';
+import { ClimateDashboard } from '../src/climate-dashboard.js';
 
 let { default: Platform } = await importSource(new URL('../src/system.js', import.meta.url));
 let { default: Connections } = await importSource(new URL('../src/connections.js', import.meta.url));
@@ -234,3 +235,24 @@ test('retained Nest REST ingestion creates Protect and ignores retired thermosta
   assert.equal(protect.smokeService.getCharacteristic(hap.Characteristic.StatusActive).value, true);
 });
 
+
+
+test('real Observe delivery carries climate readiness and invalid temperature state to the dashboard', async (context) => {
+  const flow = await setup(context);
+  const dashboard = new ClimateDashboard('/unused-cloud-flow', {
+    accounts: () => [{ id: 'account', authorised: true, observing: flow.connection.climateObserving }],
+  });
+  flow.platform.dashboard = dashboard;
+  await flow.send(Object.entries(flow.values).map(([label, values]) => trait('DEVICE_THERMOSTAT', label, values)));
+  const serial = flow.values.device_identity.serialNumber;
+  assert.equal(dashboard.devices.get(serial).needsUpdate, false);
+  assert.deepEqual(dashboard.devices.get(serial).feedback.target.stateTypes, ['ACCEPTED']);
+  await flow.send([trait('DEVICE_THERMOSTAT', 'current_temperature', {})]);
+  assert.equal(dashboard.devices.get(serial).data.physical_temperature, undefined);
+  await flow.send([trait('DEVICE_THERMOSTAT', 'current_temperature', {
+    temperatureValue: { temperature: { value: 22 } },
+  })]);
+  assert.equal(dashboard.devices.get(serial).data.physical_temperature, 22);
+  // The harness has no dashboard server; detach it before platform shutdown.
+  flow.platform.dashboard = undefined;
+});

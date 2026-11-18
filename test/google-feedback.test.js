@@ -18,7 +18,7 @@ const system = await readFile(new URL('../src/system.js', import.meta.url), 'utf
 const method = system.slice(system.indexOf('  async #observeGoogleAPI(uuid) {'), system.indexOf('  async #processData(uuid,'));
 const makeHost = new Function(
   'path', '__dirname', 'getProtoTypes', 'DATA_SOURCE', 'HomeKitDevice', 'GrpcTransport',
-    'clearTimeout', 'setTimeout', 'API_STREAM_LOOP_INTERVAL', 'API_STREAM_RETRY_MAX', 'API_STREAM_RETRY_INITIAL',
+  'clearTimeout', 'setTimeout', 'API_STREAM_LOOP_INTERVAL', 'API_STREAM_RETRY_MAX', 'API_STREAM_RETRY_INITIAL',
   'connection', 'raw', 'dashboard', 'map', 'config', 'climateFeedback',
   'return new class { #connections = new Map([["A",connection]]); #rawData = raw; #trackedDevices = new Map();' +
   ' config = { options: { useGoogleAPI: true } }; dashboard = dashboard;' +
@@ -53,7 +53,7 @@ async function setup() {
     connection, raw, dashboard, processRawData, config, climateFeedback);
   const trait = (label, values, state = 'ACCEPTED', version = 1) => ({ traitId: {
     resourceId: 'DEVICE_TEST', traitLabel: label }, stateTypes: [state], monotonicVersion: version,
-    patch: { values: structuredClone(values) } });
+  patch: { values: structuredClone(values) } });
   await host.start();
   await consume({ traitStates: Object.entries(value).map(([label, values]) => trait(label, values)) });
   return { raw, dashboard, connection, host, trait, callback: consume, send: message => consume(message),

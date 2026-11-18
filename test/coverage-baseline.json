@@ -189,5 +189,10 @@
     "lines": 95,
     "branches": 90,
     "functions": 90
+  },
+  "src/google-feedback.js": {
+    "lines": 100,
+    "branches": 90,
+    "functions": 100
   }
 }
