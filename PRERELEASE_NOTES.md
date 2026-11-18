@@ -10,6 +10,7 @@
 - Turning learning off also turns automatic application off. Turning learning back on leaves automatic application off until explicitly enabled. Turning Nest Auto-Schedule on through the dashboard turns our automatic application off while allowing preference learning to continue.
 
 ### Confirmation and control
+- Refresh live status when returning to Overview so temperature-rule changes appear without pressing Refresh. Unsaved rule edits are preserved.
 - Require a current connection, heating schedule and schedule time zone before automatically saving entries. Queued writes recheck consent and reported state. Matching entries are not rewritten, and failed or uncertain writes are not automatically replayed after acknowledgement or restart.
 - Learn only from supported intentional room-target changes in the dashboard and Apple Home. Nest Auto-Schedule edits, scheduled target changes, compensation and Eco events do not train this learner.
 - Temperature rules stay enabled. A confirmed scheduled heating target becomes the rule's desired room temperature; the selected sensors, adjustment limit and update interval continue to govern compensation.

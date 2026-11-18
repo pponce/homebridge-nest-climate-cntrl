@@ -18,6 +18,8 @@ Add separate room-preference learning and automatic-application controls, releas
 - Persist intent before sending. Pending or failed requests block further automatic changes. Remember the newest attempted observation per weekday/time/zone so evidence aging, restart, or acknowledgement cannot replay it without new intentional evidence. A late matching confirmation can resolve a failed request.
 - Queued writes recheck consent, connection, schedule, time zone and Nest learning state. Shutdown waits for in-progress automatic work and revokes its queued-write permission.
 - Temperature rules remain enabled and use confirmed scheduled targets as desired room temperatures. Their sensors, compensation limits and intervals remain in effect.
+- Overview navigation requests current status after any earlier status read, preserving rule drafts and showing failed reads as unavailable. Browser regression coverage changes the rule's execution state while on another page and verifies Overview refreshes automatically.
+- A follow-versus-fixed room-target UX was discussed. Proposed fixed mode would pause learning/application and request Nest learning off, with reasons shown on Overview. This separate design is not implemented in beta.4.
 
 ## Validation and scope
 

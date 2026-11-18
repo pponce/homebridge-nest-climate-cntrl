@@ -269,6 +269,10 @@ try {
   assert.equal(commands.length, 0);
   conflict = true;
   await page.getByLabel('Rule name', { exact: true }).fill('A concurrent edit');
+  await navigate(page, 'Overview');
+  await navigate(page, 'Climate rules', false);
+  assert.equal(await page.getByLabel('Rule name', { exact: true }).inputValue(), 'A concurrent edit',
+    'Refreshing Overview preserves unsaved rule edits');
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   await page.getByText('The configuration changed elsewhere.', { exact: false }).waitFor();
   assert.equal(await page.getByLabel('Rule name', { exact: true }).inputValue(), 'A concurrent edit');

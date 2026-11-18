@@ -407,10 +407,21 @@ function route(focus = true) {
   if (state.page === 'accounts' && connectionPage && !connectionPage.hasEdits()) connectionPage.load();
   if (state.page === 'rules') renderRules();
   if (state.page === 'settings' && state.config) refreshHeating();
+  if (focus && state.page === 'overview') void refreshOverview();
   if (focus) { $('page-title').focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: 'auto' }); }
 }
 window.addEventListener('hashchange', () => route());
 window.addEventListener('beforeunload', (event) => { if (state.dirty || connectionPage?.hasEdits()) { event.preventDefault(); event.returnValue = ''; } });
+
+async function refreshOverview() {
+  const session = state.session;
+  if (!session?.authenticated || state.restarting || (host && !host.initialConfigured)) return;
+  // A read started before navigation may predate a saved rule change. Wait, then request current status.
+  if (statusPromise) await statusPromise;
+  if (state.session !== session || state.page !== 'overview' || state.restarting) return;
+  await readStatus();
+  if (state.session === session && state.page === 'overview') renderLive();
+}
 
 async function readStatus() {
   if (statusPromise) return statusPromise;

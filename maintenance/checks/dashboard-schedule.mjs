@@ -56,6 +56,14 @@ export async function checkScheduleOverview(browser, base, output) {
     assert.doesNotMatch(await page.locator('#schedule-preview').innerText(), /Cool|89.6/);
     assert.match(await page.locator('#schedule-control').innerText(), /Living room average[\s\S]*Active · between updates/);
     assert.match(await page.locator('#schedule-control').innerText(), /confirmed Nest heating target becomes its desired room temperature/);
+    await navigate(page, 'Climate rules', false);
+    control = 'paused';
+    await navigate(page, 'Overview');
+    await page.locator('#schedule-control').getByText(/Living room average · Paused/).waitFor();
+    await navigate(page, 'Climate rules', false);
+    control = 'interval';
+    await navigate(page, 'Overview');
+    await page.locator('#schedule-control').getByText('Active · between updates', { exact: true }).waitFor();
     await page.locator('.schedule-panel').screenshot({ path: path.join(output, 'schedule-active-desktop.png') });
     const chartHeight = async () => (await page.locator('#runtime-chart').boundingBox()).height;
     const before = await chartHeight();
@@ -134,8 +142,9 @@ export async function checkScheduleOverview(browser, base, output) {
     const download = await downloadPromise;
     assert.match(download.suggestedFilename(), /^nest-sensor-diagnostics-\d+\.json$/);
     await page.locator('[aria-labelledby="diagnostics-heading"]').screenshot({ path: path.join(output, 'diagnostics-settings-mobile.png') });
+    offline = true;
     await navigate(page, 'Overview', true);
-    offline = true; await refresh();
+    await page.locator('#schedule-mode').getByText(/Last reported/).waitFor();
     assert.match(await page.locator('#schedule-mode').innerText(), /Last reported/);
     assert.match(await page.locator('#schedule-control').innerText(), /Control status unavailable/);
     assert.deepEqual(writes, [], 'Reading schedules, help and diagnostics never writes to a thermostat or configuration');
