@@ -1,4 +1,4 @@
-import { scheduleTrait, readSchedules } from '../src/nest-schedules.js';
+import { scheduleTrait, readSchedules, scheduleErrorDescription, scheduleResponseReport } from '../src/nest-schedules.js';
 // Modified by pponce for Nest Climate Cntrl; derived from Nest Accfactory. See NOTICE.
 // Exercise cloud SET outcomes through the production routing method and real device commit boundary.
 import assert from 'node:assert/strict';
@@ -22,6 +22,8 @@ let createHost = new Function(
   'USER_AGENT',
   'scheduleTrait',
   'readSchedules',
+  'scheduleErrorDescription',
+  'scheduleResponseReport',
   'return new class { climateWrites = new Map();' +
     '#connections = new Map([["account", connection]]); #rawData = rawData;' +
     'run(id, values) { return this.#set("account", id, values); }' +
@@ -63,6 +65,8 @@ function setup(source, response, options = {}) {
     'test-agent',
     scheduleTrait,
     readSchedules,
+    scheduleErrorDescription,
+    scheduleResponseReport,
   );
   return { run: (values) => host.run(id, values), requests, raw, id };
 }
@@ -282,14 +286,25 @@ test('Auto-Schedule writes only a reported learning trait and preserves explicit
   assert.deepEqual(request.stateMask.paths, ['scheduleLearningEnabled']);
 });
 
-test('schedule update failures retain transport and operation codes without raw messages', async () => {
+test('schedule update failures retain transport and operation codes with a redacted error description', async () => {
   const flow = setup(DATA_SOURCE.GOOGLE, {
     status: 0,
-    data: [{ traitOperations: [{ progress: 'COMPLETE', status: { code: 7, message: 'private server payload' } }] }],
+    data: [{ traitOperations: [{ progress: 'COMPLETE',
+      status: { code: 7, message: 'Invalid field mask for DEVICE_TEST; Bearer private-secret' } }] }],
   });
   flow.raw[flow.id].value.schedule_learning_settings = { scheduleLearningEnabled: true };
   await assert.rejects(flow.run({ schedule_learning_enabled: false }), (error) => {
-    assert.equal(error.errors[0].scheduleDiagnostic, 'Google transport status: 0; operations: COMPLETE/7.');
+    assert.equal(error.errors[0].scheduleResponse.data[0].traitOperations[0].status.code, 7);
+    assert.equal(error.errors[0].scheduleDiagnostic,
+      'Google transport status: 0; operations: COMPLETE/7 (Invalid field mask for [redacted]; [credential redacted]).');
     return true;
   });
+});
+
+test('successful schedule responses remain available for confirmation-timeout diagnostics', async () => {
+  const flow = setup(DATA_SOURCE.GOOGLE, { status: 0, data: [{ traitOperations: [{ progress: 'COMPLETE' }] }] });
+  flow.raw[flow.id].value.schedule_learning_settings = { scheduleLearningEnabled: true };
+  const result = await flow.run({ schedule_learning_enabled: false });
+  assert.equal(result.scheduleResponses[0].status, 0);
+  assert.equal(flow.requests[0][4].captureResponseMetadata, true);
 });

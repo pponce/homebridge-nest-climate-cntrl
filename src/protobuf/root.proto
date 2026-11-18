@@ -1,6 +1,8 @@
 // Modified by pponce for Nest Climate Cntrl; derived from Nest Accfactory. See NOTICE.
 syntax = "proto3";
 
+import "google/rpc/error_details.proto";
+
 import "nest/trait/audio.proto";
 import "nest/trait/detector.proto";
 import "nest/trait/diagnostics.proto";
@@ -39,3 +41,4 @@ import "nestlabs/gateway/v2.proto";
 import "nestlabs/history/v1.proto";
 import "nestlabs/eventingapi/v1.proto";
 import "home/event/common.proto";
+

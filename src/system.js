@@ -43,7 +43,7 @@
 'use strict';
 
 // Define nodejs module requirements
-import { scheduleTrait, readSchedules } from './nest-schedules.js';
+import { scheduleTrait, readSchedules, scheduleErrorDescription, scheduleResponseReport } from './nest-schedules.js';
 import { setTimeout, clearTimeout } from 'node:timers';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -1072,6 +1072,7 @@ export default class NestAccfactory {
       throw new Error('Native schedule writes require a supported Google thermostat connection');
     }
     let failures = [];
+    const scheduleResponses = [];
     for (let [key, value] of Object.entries(values)) {
       try {
         if (key === 'uuid') {
@@ -1467,25 +1468,34 @@ export default class NestAccfactory {
           if (updatedTraits.length !== 0) {
             let grpcResult = await connection.grpcTransport.command('nestlabs.gateway.v1.', 'TraitBatchApi', 'BatchUpdateState', {
               batchUpdateStateRequest: updatedTraits,
-            });
+            }, { captureResponseMetadata: ['schedule_learning_enabled', 'temperature_schedules'].includes(key) });
+            if (['schedule_learning_enabled', 'temperature_schedules'].includes(key)) {
+              scheduleResponses.push(scheduleResponseReport(grpcResult, [connection.token, nest_google_device_uuid, uuid]));
+            }
             let commandResponse = Array.isArray(grpcResult?.data) === true ? grpcResult.data[0] : undefined;
             let operations = commandResponse?.traitOperations;
             if (grpcResult?.status !== 0 || !Array.isArray(operations) || operations.length !== updatedTraits.length ||
                 operations.some((operation) => operation?.progress !== 'COMPLETE' || (operation?.status?.code ?? 0) !== 0)) {
               const error = new Error('Google API rejected setting "' + key + '"');
               if (['schedule_learning_enabled', 'temperature_schedules'].includes(key)) {
-                // Store status codes only; never expose raw response payloads.
+                error.scheduleResponse = scheduleResponses[scheduleResponses.length - 1];
+                // Include bounded, redacted descriptions; never expose raw response payloads.
                 const statuses = [];
                 if (Array.isArray(operations)) {
                   for (const item of operations) {
                     const progress = ['QUEUED', 'PENDING', 'STARTED', 'COMPLETE'].includes(item?.progress) ? item.progress : 'unknown';
                     const status = item?.status?.code ?? 0;
-                    statuses.push(progress + '/' + (Number.isInteger(status) ? status : 'missing'));
+                    statuses.push(progress + '/' + (Number.isInteger(status) ? status : 'missing') + ' (' +
+                      scheduleErrorDescription(item?.status?.message, [connection.token, nest_google_device_uuid, uuid]) + ')');
                   }
                 }
                 error.scheduleDiagnostic = 'Google transport status: ' +
                   (Number.isInteger(grpcResult?.status) ? grpcResult.status : 'missing') +
                   '; operations: ' + (Array.isArray(operations) ? statuses.join(', ') : 'missing') + '.';
+                if (grpcResult?.status !== 0) {
+                  error.scheduleDiagnostic += ' Transport description: ' +
+                    scheduleErrorDescription(grpcResult?.message, [connection.token, nest_google_device_uuid, uuid]);
+                }
               }
               throw error;
             }
@@ -1551,6 +1561,9 @@ export default class NestAccfactory {
     // Upstream updates reconcile fields that reached the cloud before another field failed.
     if (failures.length > 0) {
       throw new AggregateError(failures, 'One or more device settings were rejected');
+    }
+    if (scheduleResponses.length) {
+      return { scheduleResponses };
     }
   }
 

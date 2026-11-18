@@ -6,6 +6,76 @@ import {
   scheduleTimeZone,
 } from '../homebridge-ui/public/climate-utils.js';
 
+// Error descriptions are diagnostic text, never raw response objects or credentials.
+export function scheduleErrorDescription(message, secrets = [], limit = 400) {
+  if (typeof message !== 'string' || !message.trim()) {
+    return 'No error description supplied';
+  }
+  let text = message;
+  for (const secret of secrets) {
+    if (typeof secret === 'string' && secret.length >= 4) {
+      text = text.split(secret).join('[redacted]');
+    }
+  }
+  text = text
+    .replace(/(?:Bearer|Basic)\s+[^\s,;]+/gi, '[credential redacted]')
+    .replace(/(?:access_token|refresh_token|authorization|password|cookie|token)\s*[:=]\s*[^\s,;]+/gi, '[credential redacted]')
+    .replace(/"(?:access_token|refresh_token|authorization|password|cookie|token)"\s*:\s*"[^"]*"/gi, '[credential redacted]')
+    .replace(/https?:\/\/[^\s]+/gi, '[URL redacted]')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email redacted]')
+    .replace(/\b(?:DEVICE|STRUCTURE|USER)_[A-Za-z0-9._:-]+/g, '[identifier redacted]')
+    .replace(/\b[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\b/gi, '[identifier redacted]')
+    .replace(/[A-Za-z0-9_+./=-]{40,}/g, '[opaque value redacted]')
+    .replace(/[\x00-\x1f\x7f]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  return text.length > limit ? text.slice(0, limit) + ' [truncated]' : text;
+}
+
+// Preserve the decoded response shape, including all frames and operations.
+export function scheduleResponseReport(response, secrets = []) {
+  let count = 0;
+  const seen = new WeakSet();
+  const visit = (value, key = '', depth = 0) => {
+    if (++count > 10000 || depth > 30) {
+      return '[diagnostic limit reached]';
+    }
+    if (/token|authorization|cookie|password|secret|credential|resourceId|requestId|serial|email|accountId/i.test(key)) {
+      return '[redacted]';
+    }
+    if (typeof value === 'string') {
+      if (value === '') {
+        return value;
+      }
+      if (key === 'type_url' || key === '@type') {
+        return value.replace(/[^a-zA-Z0-9_./-]/g, '').slice(0, 300);
+      }
+      return scheduleErrorDescription(value, secrets, 65536);
+    }
+    if (value === null || typeof value === 'number' || typeof value === 'boolean') {
+      return value;
+    }
+    if (typeof value !== 'object') {
+      return '[not supplied]';
+    }
+    if (seen.has(value)) {
+      return '[circular reference]';
+    }
+    seen.add(value);
+    if (Buffer.isBuffer(value) || value instanceof Uint8Array || value.type === 'Buffer') {
+      return { binary: '[redacted: undecoded bytes]', length: value.length ?? value.data?.length };
+    }
+    if (Array.isArray(value)) {
+      return value.map((entry) => visit(entry, key, depth + 1));
+    }
+    const result = {};
+    for (const [field, entry] of Object.entries(value)) {
+      Object.defineProperty(result, field, { value: visit(entry, field, depth + 1), enumerable: true });
+    }
+    return result;
+  };
+  return visit(response);
+}
+
 export const SCHEDULE_DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 export const SCHEDULE_MODES = ['heat', 'cool', 'range'];
 const temperature = (n) => Number.isFinite(n) && n >= 9 && n <= 32;
@@ -320,7 +390,7 @@ export class NestSchedules {
           record.message = 'Confirmed by Nest; local status could not be saved.';
         });
       } else if (this.now() - pending.at > 60000) {
-        record.message = (pending.failure ? pending.failure + ' ' : '') +
+        record.message = pending.failure ? pending.failure + ' Check Nest before retrying.' :
           'Nest has not confirmed this change. Refresh and check Nest before trying again.';
       }
     }
@@ -334,6 +404,7 @@ export class NestSchedules {
       suggestions: learningSuggestions(record.events, this.zone(serial), this.now()).filter((s) => !record.dismissed?.includes(s
         .id)),
       pending: record.pending ?? null,
+      lastResponse: record.lastResponse ?? null,
       message: this.loadError || record.message || '',
       busy: this.busy.has(serial),
     };
@@ -539,10 +610,13 @@ export class NestSchedules {
         (pending.value ? 'On' : 'Off') + '. Waiting for Nest confirmation.' : 'Requested schedule update. Waiting for Nest confirmation.';
       await this.persist();
       const guard = () => this.connected(serial) && hash(this.native(serial)) === expected;
-      await this.dashboard.command(this.dashboard.devices.get(serial).id, values, {
+      const result = await this.dashboard.command(this.dashboard.devices.get(serial).id, values, {
         automation: true,
         guard,
       });
+      if (result?.scheduleResponses) {
+        record.lastResponse = { at: this.now(), request: pending.action, value: pending.value, responses: result.scheduleResponses };
+      }
       if (action === 'auto') {
         record.allowNestLearning = payload.value;
         delete record.policyError;
@@ -556,11 +630,17 @@ export class NestSchedules {
     } catch (error) {
       const failures = error instanceof AggregateError ? error.errors : [error];
       const diagnostics = failures.map((failure) => failure?.scheduleDiagnostic).filter((detail) => typeof detail === 'string');
+      const responses = failures.map((failure) => failure?.scheduleResponse).filter((response) => response !== undefined);
+      record.lastResponse = { at: this.now(), request: pending.action, value: pending.value, responses };
+      if (!responses.length) {
+        record.lastResponse.note = 'No decoded Google response was returned.';
+      }
       const requested = pending.action === 'auto' ? 'Nest Auto-Schedule ' + (pending.value ? 'On' : 'Off') : 'Nest schedule update';
       pending.failure = requested + ' request failed. ' + (diagnostics.join(' ') ||
         'No usable Google write response was received; delivery is uncertain.');
       record.message = pending.failure + ' Check Nest before retrying.';
       this.dashboard.log?.warn?.(pending.failure);
+      this.dashboard.log?.warn?.('Nest schedule response: ' + JSON.stringify(record.lastResponse));
       // Retain uncertain intent; feedback may still arrive after a transport failure.
       await this.persist().catch(() => {});
       throw new Error(record.message);

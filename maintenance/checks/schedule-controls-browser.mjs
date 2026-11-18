@@ -33,5 +33,16 @@ try{
  // Learning toggle must also work when no schedule modes are reported.
  await page.evaluate(()=>{device.scheduleControls.modes={};render()});
  await page.getByRole('button',{name:'Turn Nest Auto-Schedule on',exact:true}).click();await page.getByRole('alertdialog').waitFor();
+ await page.getByRole('button',{name:'Cancel',exact:true}).click();
+ await page.evaluate(()=>{device.scheduleControls.pending={action:'auto',value:false,at:Date.now()-61000,failure:'Request failed'};render()});
+ assert.equal(await page.getByText(/^Failed request: Auto-Schedule Off/).count(),1);
+ assert.equal(await page.getByText(/^Pending request:/).count(),0);
+ assert.equal(await page.getByRole('button',{name:'Turn Nest Auto-Schedule on',exact:true}).isDisabled(),true);
+ assert.equal(await page.getByRole('button',{name:'I checked Nest; allow retry',exact:true}).isEnabled(),true);
+ await page.evaluate(()=>{device.scheduleControls.lastResponse={responses:[{status:0,data:[{status:{code:13,message:'test failure'}}]}]};render()});
+ await page.getByText('Last Nest write response (redacted)',{exact:true}).click();
+ assert.equal(JSON.parse(await page.getByLabel('Nest write response',{exact:true}).inputValue()).responses[0].data[0].status.code,13);
+ const downloaded=page.waitForEvent('download');await page.getByRole('button',{name:'Download response JSON',exact:true}).click();
+ assert.equal((await downloaded).suggestedFilename(),'nest-schedule-response.json');
  assert.deepEqual(errors,[]);console.log('PASS: mobile toggle warning, confirmed writes, Fahrenheit editor, draft preservation, clear cancellation, unsupported mode controls, no horizontal overflow.');
 }finally{await browser.close();await new Promise(r=>server.close(r));}

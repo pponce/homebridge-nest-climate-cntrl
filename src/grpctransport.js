@@ -251,6 +251,29 @@ export default class GrpcTransport {
     }
   }
 
+  #decodeDiagnosticValues(value) {
+    if (!value || typeof value !== 'object') {
+      return value;
+    }
+    const typeUrl = value.type_url ?? value.typeUrl;
+    if (typeof typeUrl === 'string' && typeof value.value === 'string') {
+      try {
+        const type = this.#protobufRoot.lookupType(typeUrl.split('/').pop());
+        return { type_url: typeUrl, value: this.#decodeDiagnosticValues(type.decode(Buffer.from(value.value, 'base64')).toJSON()) };
+      } catch {
+        return { type_url: typeUrl, value: '[undecoded binary detail omitted]', encodedLength: value.value.length };
+      }
+    }
+    if (Array.isArray(value)) {
+      return value.map((entry) => this.#decodeDiagnosticValues(entry));
+    }
+    const result = {};
+    for (const [key, entry] of Object.entries(value)) {
+      Object.defineProperty(result, key, { value: this.#decodeDiagnosticValues(entry), enumerable: true });
+    }
+    return result;
+  }
+
   #ensureSession() {
     let pool = GrpcTransport.#sessionPool;
     let sessionKey = this.#sessionKey;
@@ -475,6 +498,9 @@ export default class GrpcTransport {
       }
 
       request.on('response', (headers) => {
+        if (options.captureResponseMetadata === true) {
+          result.headers = { ...headers };
+        }
         httpStatus = Number(headers?.[':status']);
         httpContentType = String(headers?.['content-type'] || '');
 
@@ -611,7 +637,7 @@ export default class GrpcTransport {
           try {
             // onFrame must stay non-blocking here.
             // observe() serialises async callback execution separately.
-            onFrame(decoded);
+            onFrame(options.captureResponseMetadata === true ? this.#decodeDiagnosticValues(decoded) : decoded);
             frameCount++;
           } catch (error) {
             // Response handler failure means the current request stream can no longer be trusted.
@@ -649,6 +675,14 @@ export default class GrpcTransport {
       });
 
       request.on('trailers', (headers) => {
+        if (options.captureResponseMetadata === true) {
+          result.trailers = { ...headers };
+          if (typeof headers['grpc-status-details-bin'] === 'string') {
+            result.decodedStatusDetails = this.#decodeDiagnosticValues({
+              type_url: 'type.googleapis.com/google.rpc.Status', value: headers['grpc-status-details-bin'],
+            });
+          }
+        }
         // gRPC final status is normally carried in trailers.
         // Do not allow trailers to overwrite a local terminal failure.
         if (isTerminal === true) {
@@ -913,4 +947,5 @@ export default class GrpcTransport {
     return result;
   }
 }
+
 

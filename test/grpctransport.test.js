@@ -67,6 +67,9 @@ test('gRPC response buffering and terminal status handling', async (t) => {
   frame.set(payload, 5);
   let emptyFrame = Buffer.alloc(5);
   let cases = [
+    { name: 'captures malformed diagnostic details without failing the call', chunks: [frame], data: [expected],
+      capture: true, malformed: true },
+    { name: 'captures complete diagnostic metadata', chunks: [frame], data: [expected], capture: true },
     { name: 'grows beyond one doubling', chunks: [frame], data: [expected] },
     {
       name: 'retains split header and payload',
@@ -118,7 +121,8 @@ test('gRPC response buffering and terminal status handling', async (t) => {
             for (let chunk of scenario.chunks) {
               request.emit('data', chunk);
             }
-            request.emit('trailers', { 'grpc-status': String(scenario.trailerStatus ?? 0), 'grpc-message': scenario.trailerMessage ?? '' });
+            request.emit('trailers', { 'grpc-status': String(scenario.trailerStatus ?? 0), 'grpc-message': scenario.trailerMessage ?? '',
+              ...(scenario.capture ? { 'grpc-status-details-bin': scenario.malformed ? '/w==' : 'CA0SB2ZhaWx1cmU=' } : {}) });
             request.close();
           });
         return request;
@@ -134,9 +138,22 @@ test('gRPC response buffering and terminal status handling', async (t) => {
         let result =
           scenario.observe === true
             ? await transport.observe('nestlabs.gateway.v1.', 'ResourceApi', 'SendCommand', {}, () => {})
-            : await transport.command('nestlabs.gateway.v1.', 'ResourceApi', 'SendCommand', {});
+            : await transport.command('nestlabs.gateway.v1.', 'ResourceApi', 'SendCommand', {},
+              { captureResponseMetadata: scenario.capture === true });
         assert.equal(result.status, scenario.status ?? GrpcTransport.STATUS.OK);
         assert.equal(result.code, scenario.code);
+        if (scenario.capture) {
+          assert.equal(result.headers[':status'], 200);
+          assert.equal(result.trailers['grpc-status'], '0');
+          if (scenario.malformed) {
+            assert.equal(result.decodedStatusDetails.value, '[undecoded binary detail omitted]');
+          } else {
+            assert.equal(result.decodedStatusDetails.value.code, 13);
+            assert.equal(result.decodedStatusDetails.value.message, 'failure');
+          }
+        } else {
+          assert.equal(result.headers, undefined);
+        }
         if (scenario.data !== undefined) {
           assert.deepEqual(result.data, scenario.data);
         }
@@ -147,3 +164,4 @@ test('gRPC response buffering and terminal status handling', async (t) => {
     });
   }
 });
+

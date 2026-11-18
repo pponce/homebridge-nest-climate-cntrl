@@ -10,6 +10,8 @@ import {
   scheduleTrait,
   learningSuggestions,
   schedulesMatch,
+  scheduleErrorDescription,
+  scheduleResponseReport,
 } from '../src/nest-schedules.js';
 const row = {
   day: 1,
@@ -58,7 +60,7 @@ async function fixture(t, command) {
       calls.push(args);
       assert.equal(args[2].guard(), true);
       if (command) {
-        await command(...args);
+        return await command(...args);
       }
     },
   };
@@ -429,6 +431,7 @@ test('distinct repeated weekday preferences produce separate chronological sugge
 test('schedule failures retain safe response details after timeout and restart', async (t) => {
   const failure = Object.assign(new Error('private response'), {
     scheduleDiagnostic: 'Google transport status: 0; operations: COMPLETE/7.',
+    scheduleResponse: { status: 0, data: [{ code: 7, details: { reason: 'denied' } }] },
   });
   const f = await fixture(t, () => {
     throw new AggregateError([failure], 'Rejected');
@@ -438,11 +441,64 @@ test('schedule failures retain safe response details after timeout and restart',
   await assert.rejects(f.manager.action(f.payload('auto', { value: false })), /COMPLETE\/7/);
   f.advance(61000);
   assert.match(f.manager.snapshot('test').message, /Auto-Schedule Off request failed.*COMPLETE\/7/);
-  assert.equal(warnings.length, 1);
+  assert.equal(f.manager.snapshot('test').message.includes('has not confirmed'), false);
+  assert.equal(warnings.length, 2);
   assert.equal(warnings[0].includes('private response'), false);
   const restarted = new NestSchedules(f.dashboard, () => Date.parse('2026-11-18T13:00:00Z'));
   await restarted.start();
   assert.match(restarted.snapshot('test').message, /COMPLETE\/7/);
+  assert.equal(restarted.snapshot('test').lastResponse.responses[0].data[0].details.reason, 'denied');
   f.data.native_schedules.autoSchedule = false;
   assert.equal(restarted.snapshot('test').pending, null);
+});
+
+test('error descriptions retain useful explanations and redact credentials and identifiers', () => {
+  assert.equal(scheduleErrorDescription(undefined), 'No error description supplied');
+  assert.equal(scheduleErrorDescription('   '), 'No error description supplied');
+  assert.equal(scheduleErrorDescription('Invalid field mask: scheduleLearningEnabled'), 'Invalid field mask: scheduleLearningEnabled');
+  const source = 'Bad field for DEVICE_TEST user@example.com https://example.test/private Bearer secret ' +
+    'token=private {"password":"secret with spaces"} account-known 123e4567-e89b-12d3-a456-426614174000';
+  const result = scheduleErrorDescription(source, ['account-known', null, 'x']);
+  for (const secret of ['DEVICE_TEST', 'user@example.com', 'example.test', 'secret', 'private', 'account-known', '123e4567']) {
+    assert.equal(result.includes(secret), false);
+  }
+  assert.equal(scheduleErrorDescription('z'.repeat(200)), '[opaque value redacted]');
+  assert.ok(scheduleErrorDescription('long explanation '.repeat(500)).length <= 412);
+  assert.equal(scheduleErrorDescription('line\nnext\tpart'), 'line next part');
+});
+
+test('complete response reports preserve frames, operation details and metadata without secrets', () => {
+  const response = { status: 0, headers: { 'set-cookie': 'private', ':status': 200 },
+    data: [{ traitOperations: [{ status: { code: 13, message: 'unsupported field',
+      details: [{ type_url: 'type.googleapis.com/google.rpc.BadRequest', value: { field: 'stateMask', reason: 'invalid' } }] },
+    traitRequest: { resourceId: 'device-private', requestId: 'request-private' } }] }, { extra: true }],
+    trailers: { 'grpc-status': '0' }, token: 'private', missing: undefined, binary: Buffer.from('private') };
+  const report = scheduleResponseReport(response);
+  assert.equal(report.data.length, 2);
+  assert.equal(report.data[0].traitOperations[0].status.details[0].value.field, 'stateMask');
+  assert.equal(report.headers[':status'], 200);
+  assert.equal(report.headers['set-cookie'], '[redacted]');
+  assert.equal(report.missing, '[not supplied]');
+  assert.equal(report.binary.length, 7);
+  assert.equal(JSON.stringify(report).includes('private'), false);
+  const circular = {};
+  circular.self = circular;
+  assert.equal(scheduleResponseReport(circular).self, '[circular reference]');
+  let deep = {};
+  for (let n = 0; n < 35; n++) {
+    deep = { nested: deep };
+  }
+  assert.match(JSON.stringify(scheduleResponseReport(deep)), /diagnostic limit reached/);
+  assert.match(JSON.stringify(scheduleResponseReport(Array(10001).fill(null))), /diagnostic limit reached/);
+});
+
+test('successful write responses persist after timeout and external confirmation', async (t) => {
+  const f = await fixture(t, () => ({ scheduleResponses: [{ status: 0, data: [{ operations: ['COMPLETE'] }] }] }));
+  await f.manager.action(f.payload('auto', { value: false }));
+  f.advance(61000);
+  assert.equal(f.manager.snapshot('test').lastResponse.responses[0].status, 0);
+  f.data.native_schedules.autoSchedule = false;
+  assert.equal(f.manager.snapshot('test').pending, null);
+  assert.equal(f.manager.snapshot('test').lastResponse.value, false);
+  await f.manager.saving;
 });

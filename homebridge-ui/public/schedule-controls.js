@@ -55,9 +55,27 @@ export function renderScheduleControls(device, { unit, live, send, refresh }) {
   }
   if (model.pending) {
     const request = model.pending.action === 'auto' ? 'Auto-Schedule ' + (model.pending.value ? 'On' : 'Off') : 'a weekly schedule update';
-    body.append(node('p', 'Pending request: ' + request + '. The controls show the last values reported by Nest.', 'small-note'));
+    const state = model.pending.failure ? 'Failed request: ' : 'Pending request: ';
+    body.append(node('p', state + request + '. The controls show the last values reported by Nest.' +
+      (model.pending.failure ? ' Check Nest before allowing another attempt; this request will not be retried automatically.' : ''), 'small-note'));
     body.append(button('Refresh confirmation', () => void submit({ action: 'check' }), live && !view.busy));
     if (Date.now() - model.pending.at > 60000) body.append(button('I checked Nest; allow retry', () => void submit({ action: 'acknowledge' }), live && !view.busy));
+  }
+  if (model.lastResponse) {
+    const diagnostic = node('details', undefined, 'schedule-response');
+    diagnostic.open = view.responseOpen === true;
+    diagnostic.addEventListener('toggle', () => { view.responseOpen = diagnostic.open; });
+    diagnostic.append(node('summary', 'Last Nest write response (redacted)'));
+    const output = node('textarea'); output.readOnly = true; output.rows = 14;
+    output.setAttribute('aria-label', 'Nest write response');
+    output.value = JSON.stringify(model.lastResponse, null, 2);
+    diagnostic.append(output);
+    diagnostic.append(button('Download response JSON', () => {
+      const url = URL.createObjectURL(new Blob([output.value], { type: 'application/json' }));
+      const link = node('a'); link.href = url; link.download = 'nest-schedule-response.json';
+      document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, true));
+    body.append(diagnostic);
   }
   if (view.confirm) {
     const prompt = node('div', undefined, 'schedule-confirm'); prompt.setAttribute('role', 'alertdialog');
