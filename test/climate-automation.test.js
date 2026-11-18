@@ -3136,22 +3136,50 @@ test('Eco recovery still respects a temperature lock and requires explicit Resum
 test('temperature control waits for Auto-Schedule off and learns only explicit room changes', async (t) => {
   const f = await fixture(t, {});
   f.dashboard.schedules.now = f.now;
-  f.dashboard.update('T', 'Thermostat', {native_schedules: {autoSchedule:true,modes:{heat:[]}},schedule_time_zone:'America/Los_Angeles'}, 'A');
-  f.noAck(); f.rules({temperature:[temperatureRule]});
+  f.dashboard.update('T', 'Thermostat', {
+    native_schedules: {
+      autoSchedule: true,
+      modes: {
+        heat: [],
+      },
+    },
+    schedule_time_zone: 'America/Los_Angeles',
+  }, 'A');
+  f.noAck();
+  f.rules({
+    temperature: [temperatureRule],
+  });
   await f.engine.tick();
-  assert.equal(f.commands.length,1);
-  assert.equal(f.commands[0].schedule_learning_enabled,false);
-  assert.match(f.rule('rooms').reason,/Auto-Schedule/);
-  await f.engine.tick(); assert.equal(f.commands.length,1);
-  f.dashboard.update('T','Thermostat',{native_schedules:{autoSchedule:false,modes:{heat:[]}}},'A');
+  assert.equal(f.commands.length, 1);
+  assert.equal(f.commands[0].schedule_learning_enabled, false);
+  assert.match(f.rule('rooms').reason, /Auto-Schedule/);
   await f.engine.tick();
-  assert.equal(f.commands.length,2); assert.equal(f.commands[1].target_temperature_low,22.5);
-  f.dashboard.update('T','Thermostat',{target_temperature_low:22.5},'A');
+  assert.equal(f.commands.length, 1);
+  f.dashboard.update('T', 'Thermostat', {
+    native_schedules: {
+      autoSchedule: false,
+      modes: {
+        heat: [],
+      },
+    },
+  }, 'A');
   await f.engine.tick();
-  assert.equal(f.dashboard.schedules.record('T').events.length,0);
-  const model=f.dashboard.temperatureTarget('T');
-  await f.dashboard.setTemperatureTarget({serial:'T',expected:model.expected,values:{value:22}});
-  assert.equal(f.dashboard.schedules.record('T').events.length,1);
-  assert.equal(f.dashboard.schedules.record('T').events[0].value,22);
+  assert.equal(f.commands.length, 2);
+  assert.equal(f.commands[1].target_temperature_low, 22.5);
+  f.dashboard.update('T', 'Thermostat', {
+    target_temperature_low: 22.5,
+  }, 'A');
+  await f.engine.tick();
+  assert.equal(f.dashboard.schedules.record('T').events.length, 0);
+  const model = f.dashboard.temperatureTarget('T');
+  await f.dashboard.setTemperatureTarget({
+    serial: 'T',
+    expected: model.expected,
+    values: {
+      value: 22,
+    },
+  });
+  assert.equal(f.dashboard.schedules.record('T').events.length, 1);
+  assert.equal(f.dashboard.schedules.record('T').events[0].value, 22);
   await f.dashboard.schedules.saving;
 });
