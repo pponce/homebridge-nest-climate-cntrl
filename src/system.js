@@ -1475,11 +1475,17 @@ export default class NestAccfactory {
               const error = new Error('Google API rejected setting "' + key + '"');
               if (['schedule_learning_enabled', 'temperature_schedules'].includes(key)) {
                 // Store status codes only; never expose raw response payloads.
-                const code = (value) => Number.isInteger(value) ? value : 'missing';
-                const progress = (value) => ['QUEUED', 'PENDING', 'STARTED', 'COMPLETE'].includes(value) ? value : 'unknown';
-                error.scheduleDiagnostic = 'Google transport status: ' + code(grpcResult?.status) +
-                  '; operations: ' + (Array.isArray(operations) ? operations.map((item) =>
-                  progress(item?.progress) + '/' + code(item?.status?.code ?? 0)).join(', ') : 'missing') + '.';
+                const statuses = [];
+                if (Array.isArray(operations)) {
+                  for (const item of operations) {
+                    const progress = ['QUEUED', 'PENDING', 'STARTED', 'COMPLETE'].includes(item?.progress) ? item.progress : 'unknown';
+                    const status = item?.status?.code ?? 0;
+                    statuses.push(progress + '/' + (Number.isInteger(status) ? status : 'missing'));
+                  }
+                }
+                error.scheduleDiagnostic = 'Google transport status: ' +
+                  (Number.isInteger(grpcResult?.status) ? grpcResult.status : 'missing') +
+                  '; operations: ' + (Array.isArray(operations) ? statuses.join(', ') : 'missing') + '.';
               }
               throw error;
             }
