@@ -266,6 +266,7 @@ export function learningSuggestions(events, zone, now = Date.now()) {
       id: hash([zone, key, row, points.map((e) => e.at)]),
       ...row,
       observations: points.length,
+      latestAt: Math.max(...points.map((e) => e.at)),
     }];
   }).sort((a, b) => a.day - b.day || a.time - b.time);
 }
@@ -289,12 +290,18 @@ export class NestSchedules {
       for (const record of Object.values(saved.records)) {
         if (!record || typeof record !== 'object' || Array.isArray(record) ||
           typeof record.allowNestLearning !== 'boolean' || typeof record.learning !== 'boolean' ||
+          (record.autoApply !== undefined && typeof record.autoApply !== 'boolean') ||
+          (record.autoApplyError !== undefined && typeof record.autoApplyError !== 'string') ||
+          (record.autoHandled !== undefined && (!record.autoHandled || typeof record.autoHandled !== 'object' ||
+            Array.isArray(record.autoHandled) || Object.keys(record.autoHandled).length > 500 ||
+            Object.values(record.autoHandled).some((at) => !Number.isFinite(at)))) ||
           !Array.isArray(record.events) || record.events.length > 500 ||
           record.events.some((event) => !event || !temperature(event.value) || !Number.isFinite(event.at) ||
             !['room', 'manual'].includes(event.source) || typeof event.zone !== 'string') ||
           (record.dismissed !== undefined && (!Array.isArray(record.dismissed) || record.dismissed.some((id) => typeof id !==
             'string'))) ||
           (record.pending && (!Number.isFinite(record.pending.at) ||
+            (record.pending.autoApply !== undefined && typeof record.pending.autoApply !== 'boolean') ||
             !['auto', 'schedule'].includes(record.pending.action) ||
             (record.pending.action === 'auto' && typeof record.pending.value !== 'boolean') ||
             (record.pending.action === 'schedule' && (!record.pending.modes ||
@@ -319,6 +326,7 @@ export class NestSchedules {
     return this.records[serial] ??= {
       allowNestLearning: false,
       learning: true,
+      autoApply: false,
       events: [],
     };
   }
@@ -385,6 +393,9 @@ export class NestSchedules {
           schedulesMatch(native.modes[mode], entries));
       if (matched) {
         record.message = 'Confirmed by Nest.';
+        if (pending.autoApply) {
+          delete record.autoApplyError;
+        }
         if (pending.approvedId) {
           record.dismissed = [...(record.dismissed ?? []), pending.approvedId].slice(-200);
         }
@@ -397,7 +408,7 @@ export class NestSchedules {
           'Nest has not confirmed this change. Refresh and check Nest before trying again.';
       }
     }
-    return {
+    const model = {
       ...native,
       expected: hash(native),
       scheduleRevisions: Object.fromEntries(Object.entries(native.modes).map(([mode, entries]) => [mode, hash([mode, entries])])),
@@ -405,6 +416,7 @@ export class NestSchedules {
       zone: this.zone(serial),
       allowNestLearning: record.allowNestLearning === true,
       learning: record.learning !== false,
+      autoApply: record.autoApply === true,
       suggestions: learningSuggestions(record.events, this.zone(serial), this.now()).filter((s) => !record.dismissed?.includes(s
         .id)),
       pending: record.pending ?? null,
@@ -412,6 +424,83 @@ export class NestSchedules {
       message: this.loadError || record.message || '',
       busy: this.busy.has(serial),
     };
+    model.autoApplyMessage = this.autoApplyBlock(serial, model) ||
+      'On. Qualifying heating suggestions are saved to Nest automatically.';
+    return model;
+  }
+
+  autoApplyBlock(serial, model, policyOnly = false) {
+    const record = this.record(serial);
+    if (!model.autoApply) {
+      return 'Off. Review and approve each suggestion before it is saved to Nest.';
+    }
+    if (this.loadError || record.autoApplyError) {
+      return this.loadError || record.autoApplyError;
+    }
+    if (!model.learning || this.stopped) {
+      return 'Automatic application is paused.';
+    }
+    if (model.busy || model.pending) {
+      return 'Waiting for the current Nest request to be resolved.';
+    }
+    if (!model.connected) {
+      return 'Waiting for a current Nest connection.';
+    }
+    if (policyOnly) {
+      return null;
+    }
+    if (model.autoSchedule !== false) {
+      return model.autoSchedule === true ?
+        'Turning Nest Auto-Schedule off; waiting for confirmation before applying learned preferences.' :
+        'Waiting for Nest to report Auto-Schedule before it can be turned off.';
+    }
+    if (!model.zone || !Array.isArray(model.modes.heat)) {
+      return 'Waiting for a valid schedule time zone and a current Nest heating schedule.';
+    }
+    return null;
+  }
+
+  applyLearned() {
+    if (!this.applying) {
+      this.applying = this.applySuggestions().finally(() => {
+        this.applying = null;
+      });
+    }
+    return this.applying;
+  }
+
+  async applySuggestions() {
+    for (const serial of Object.keys(this.records)) {
+      const model = this.snapshot(serial);
+      if (this.autoApplyBlock(serial, model, true)) {
+        continue;
+      }
+      const record = this.record(serial);
+      try {
+        if (model.autoSchedule === true) {
+          await this.action({ serial, action: 'auto', value: false, expected: model.expected }, true);
+          continue;
+        }
+        if (this.autoApplyBlock(serial, model)) {
+          continue;
+        }
+        const suggestion = model.suggestions.find((s) => s.latestAt >
+          (record.autoHandled?.[hash([model.zone, s.day, s.time])] ?? 0));
+        if (!suggestion) {
+          continue;
+        }
+        await this.action({ serial, action: 'apply', expected: model.expected, id: suggestion.id });
+      } catch {
+        record.autoApplyError = 'Automatic application stopped. Review the Nest response and schedule. ' +
+          'Turn automatic application off and on to enable it again; the same attempted learning will not be replayed.';
+        await this.persist().catch(() => {});
+      }
+    }
+  }
+
+  async stop() {
+    this.stopped = true;
+    await this.applying;
   }
 
   async observe(serial, value, source = 'room') {
@@ -471,14 +560,14 @@ export class NestSchedules {
     return record.policyError || 'Waiting for Nest to confirm Auto-Schedule is off.';
   }
 
-  async action(payload) {
+  async action(payload, automaticPolicy = false) {
     const {
       serial,
       action,
       expected,
     } = payload ?? {};
-    if (!['auto', 'save', 'clear', 'approve', 'dismiss', 'learning', 'check', 'acknowledge'].includes(action) || typeof serial !==
-      'string') {
+    if (!['auto', 'save', 'clear', 'approve', 'apply', 'dismiss', 'learning', 'autoApply', 'check', 'acknowledge'].includes(action) ||
+        typeof serial !== 'string') {
       throw new Error('Unsupported schedule action.');
     }
     if (this.loadError) {
@@ -488,6 +577,36 @@ export class NestSchedules {
       throw new Error('Thermostat unavailable.');
     }
     const model = this.snapshot(serial);
+    const record = this.record(serial);
+    // Local preferences can be disabled while a native write is queued. The queued-write guard checks them again.
+    if (['learning', 'autoApply'].includes(action)) {
+      if (typeof payload.value !== 'boolean') {
+        throw new Error('Choose learning or automatic application on or off.');
+      }
+      if (action === 'autoApply' && payload.value &&
+          (!model.learning || payload.confirmation !== 'enable-auto-apply-learning')) {
+        throw new Error('Enable learning and confirm automatic application first.');
+      }
+      const previous = { learning: record.learning, autoApply: record.autoApply, autoApplyError: record.autoApplyError };
+      record[action] = payload.value;
+      if (action === 'learning' && !payload.value) {
+        record.autoApply = false;
+      }
+      if (action === 'autoApply' || !payload.value) {
+        delete record.autoApplyError;
+      }
+      try {
+        await this.persist();
+      } catch (error) {
+        Object.assign(record, previous);
+        throw error;
+      }
+      if (action === 'autoApply' && payload.value) {
+        void this.applyLearned();
+      }
+      return { accepted: true, message: action === 'learning' ? 'Room preference learning ' + (payload.value ? 'on.' : 'off.') :
+        this.snapshot(serial).autoApplyMessage };
+    }
     const scopedSchedule = action === 'save' && Object.hasOwn(payload, 'scheduleRevision');
     if (scopedSchedule && (typeof payload.scheduleRevision !== 'string' ||
         payload.scheduleRevision !== model.scheduleRevisions[payload.mode])) {
@@ -500,7 +619,9 @@ export class NestSchedules {
     if (this.busy.has(serial)) {
       throw new Error('Another schedule action is in progress.');
     }
-    const record = this.record(serial);
+    if (action === 'apply' && this.autoApplyBlock(serial, model)) {
+      throw new Error(this.autoApplyBlock(serial, model));
+    }
     if (action === 'acknowledge') {
       if (!model.connected || !model.pending || this.now() - model.pending.at <= 60000) {
         throw new Error('Wait for Nest confirmation first.');
@@ -517,16 +638,6 @@ export class NestSchedules {
       this.dashboard.refreshFeedback(serial);
       return {
         message: model.message,
-      };
-    }
-    if (action === 'learning') {
-      if (typeof payload.value !== 'boolean') {
-        throw new Error('Choose learning on or off.');
-      }
-      record.learning = payload.value;
-      await this.persist();
-      return {
-        message: 'Room preference learning ' + (payload.value ? 'on.' : 'off.'),
       };
     }
     if (action === 'dismiss') {
@@ -561,6 +672,7 @@ export class NestSchedules {
         action: 'auto',
         value: payload.value,
         at: this.now(),
+        ...(automaticPolicy ? { autoApply: true } : {}),
       };
     } else {
       let modes;
@@ -569,7 +681,7 @@ export class NestSchedules {
           throw new Error('Confirm clearing temperature schedules first.');
         }
         modes = Object.fromEntries(Object.keys(model.modes).map((mode) => [mode, []]));
-      } else if (action === 'approve') {
+      } else if (['approve', 'apply'].includes(action)) {
         const suggestion = model.suggestions.find((s) => s.id === payload.id);
         if (!suggestion || !Array.isArray(model.modes.heat)) {
           throw new Error('This suggestion or Nest heating schedule is unavailable.');
@@ -582,6 +694,20 @@ export class NestSchedules {
             heat: suggestion.heat,
           }]),
         };
+        if (action === 'apply') {
+          const key = hash([model.zone, suggestion.day, suggestion.time]);
+          if (suggestion.latestAt <= (record.autoHandled?.[key] ?? 0)) {
+            throw new Error('This learning was already attempted. Review and approve it manually if needed.');
+          }
+          record.autoHandled = Object.fromEntries(Object.entries(record.autoHandled ?? {}).filter(([, at]) =>
+            this.now() - at < 42 * 86400000));
+          record.autoHandled[key] = suggestion.latestAt;
+          if (schedulesMatch(model.modes.heat, modes.heat)) {
+            record.dismissed = [...(record.dismissed ?? []), suggestion.id].slice(-200);
+            await this.persist();
+            return { message: 'The learned entry already matches Nest’s heating schedule.' };
+          }
+        }
       } else {
         if (payload.confirmation !== 'save-temperature-schedule') {
           throw new Error('Review and confirm the schedule first.');
@@ -603,7 +729,8 @@ export class NestSchedules {
         action: 'schedule',
         modes,
         at: this.now(),
-        ...(action === 'approve' ? {
+        ...(action === 'apply' ? { autoApply: true } : {}),
+        ...(['approve', 'apply'].includes(action) ? {
           approvedId: payload.id,
         } : {}),
       };
@@ -613,6 +740,9 @@ export class NestSchedules {
       // Persist intent before sending; a restart must not repeat an uncertain destructive operation.
       if (action === 'auto') {
         record.allowNestLearning = payload.value;
+        if (payload.value) {
+          record.autoApply = false;
+        }
         delete record.policyError;
       }
       record.pending = pending;
@@ -621,7 +751,9 @@ export class NestSchedules {
       await this.persist();
       const guard = () => this.connected(serial) && (scopedSchedule ?
         hash([payload.mode, this.native(serial).modes[payload.mode]]) === payload.scheduleRevision :
-        hash(this.native(serial)) === expected);
+        hash(this.native(serial)) === expected) && ((!automaticPolicy && action !== 'apply') ||
+          (!this.stopped && record.autoApply === true && record.learning !== false && !record.autoApplyError &&
+            (automaticPolicy || (this.zone(serial) === model.zone && this.native(serial).autoSchedule === false))));
       const result = await this.dashboard.command(this.dashboard.devices.get(serial).id, values, {
         automation: true,
         guard,

@@ -145,6 +145,7 @@ export class ClimateDashboard {
     this.timer = setInterval(() => {
       this.sample();
       this.persist();
+      void this.schedules.applyLearned();
     }, 30000);
     this.timer.unref();
   }
@@ -491,6 +492,7 @@ export class ClimateDashboard {
 
   async stop() {
     clearInterval(this.timer);
+    await this.schedules.stop();
     this.sample();
     if (this.server?.listening) {
       this.server.closeAllConnections();

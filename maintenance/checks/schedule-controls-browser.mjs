@@ -44,5 +44,26 @@ try{
  assert.equal(JSON.parse(await page.getByLabel('Nest write response',{exact:true}).inputValue()).responses[0].data[0].status.code,13);
  const downloaded=page.waitForEvent('download');await page.getByRole('button',{name:'Download response JSON',exact:true}).click();
  assert.equal((await downloaded).suggestedFilename(),'nest-schedule-response.json');
+ await page.evaluate(()=>{delete device.scheduleControls.pending; device.scheduleControls.autoSchedule=true;device.scheduleControls.autoApply=false;render()});
+ const applyLearning=page.getByLabel('Automatically apply learned preferences',{exact:true});
+ assert.equal(await applyLearning.isChecked(),false);
+ const beforeLearning=await page.evaluate(()=>requests.length);
+ await applyLearning.check();await page.getByRole('alertdialog').waitFor();
+ assert.match(await page.getByRole('alertdialog').innerText(),/turns off Nest Auto-Schedule/);
+ assert.equal(await page.evaluate(()=>requests.length),beforeLearning);
+ await page.getByRole('button',{name:'Cancel',exact:true}).click();
+ assert.equal(await applyLearning.isChecked(),false);
+ await applyLearning.check();await page.getByRole('button',{name:'Confirm',exact:true}).click();
+ await page.waitForFunction(n=>requests.length===n+1,beforeLearning);
+ const autoRequest=await page.evaluate(()=>requests.at(-1));
+ assert.equal(autoRequest.action,'autoApply');assert.equal(autoRequest.value,true);
+ assert.equal(autoRequest.confirmation,'enable-auto-apply-learning');
+ await page.evaluate(()=>{device.scheduleControls.autoApply=true;device.scheduleControls.autoApplyMessage='Waiting for the current Nest request to be resolved.';render()});
+ assert.equal(await applyLearning.isChecked(),true);
+ await applyLearning.uncheck();await page.waitForFunction(n=>requests.length===n+2,beforeLearning);
+ assert.equal(await page.evaluate(()=>requests.at(-1).value),false);
+ await page.evaluate(()=>{device.scheduleControls.learning=false;device.scheduleControls.autoApply=false;render()});
+ assert.equal(await applyLearning.isEnabled(),false);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
  assert.deepEqual(errors,[]);console.log('PASS: mobile toggle warning, confirmed writes, Fahrenheit editor, draft preservation, clear cancellation, unsupported mode controls, no horizontal overflow.');
 }finally{await browser.close();await new Promise(r=>server.close(r));}

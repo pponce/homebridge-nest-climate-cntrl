@@ -37,7 +37,7 @@ export function renderScheduleControls(device, { unit, live, send, refresh }) {
   body.append(node('p', 'With a temperature rule, heating entries become desired room temperatures after Nest confirms them. The rule adjusts Nest’s target using the selected sensors.', 'small-note'));
   const auto = button('Turn Nest Auto-Schedule ' + (model.autoSchedule ? 'off' : 'on'), () => {
     if (model.autoSchedule) void submit({ action: 'auto', value: false });
-    else confirm('Enable Nest Auto-Schedule? A room-temperature rule sends adjusted targets to Nest. Nest may learn those adjustments as temperature preferences and change your schedule. This override keeps Nest learning enabled while your rule runs.',
+    else confirm('Enable Nest Auto-Schedule? A room-temperature rule sends adjusted targets to Nest. Nest may learn those adjustments as temperature preferences and change your schedule. This override keeps Nest learning enabled while your rule runs and turns off automatic application of learned room preferences. Room-preference learning can stay on.',
       { action: 'auto', value: true, confirmation: 'enable-nest-learning' });
   }, enabled && model.autoSchedule !== null);
   auto.setAttribute('aria-pressed', String(model.autoSchedule === true)); body.append(auto);
@@ -48,7 +48,16 @@ export function renderScheduleControls(device, { unit, live, send, refresh }) {
   const learn = node('input'); learn.type = 'checkbox'; learn.checked = model.learning !== false; learn.disabled = !live || view.busy;
   learn.addEventListener('change', () => void submit({ action: 'learning', value: learn.checked }));
   body.append(label('Learn room-temperature preferences', learn));
-  body.append(node('p', 'Suggests heating entries from confirmed room-target changes in this dashboard and Apple Home. Requires three similar choices on separate dates for the same weekday and half-hour. Automatic compensation and Eco changes are excluded. Nothing is saved to Nest without approval.', 'small-note'));
+  body.append(node('p', 'Suggests heating entries from intentional room-target choices in this dashboard and Apple Home. Requires three similar choices on separate dates for the same weekday and half-hour. Nest Auto-Schedule changes, scheduled targets, compensation and Eco changes do not train this learner.', 'small-note'));
+  const applyLearning = node('input'); applyLearning.type = 'checkbox'; applyLearning.checked = model.autoApply === true;
+  applyLearning.disabled = !live || view.busy || model.learning === false;
+  applyLearning.addEventListener('change', () => {
+    if (applyLearning.checked) confirm('Enable automatic application of learned preferences? This turns off Nest Auto-Schedule, Nest’s automatic schedule-learning feature. Existing schedule entries are kept. After Nest confirms Auto-Schedule is off, current and future qualifying heating suggestions will be saved without individual approval, replacing entries at the same weekday and time. Turning off learning also turns off automatic application.',
+      { action: 'autoApply', value: true, confirmation: 'enable-auto-apply-learning' });
+    else void submit({ action: 'autoApply', value: false });
+  });
+  body.append(label('Automatically apply learned preferences', applyLearning));
+  body.append(node('p', model.autoApplyMessage || 'Off by default. Enabling automatic application turns off Nest Auto-Schedule and waits for confirmation before saving learned entries.', 'small-note'));
   if (view.message || model.message || model.pending) {
     const status = node('p', view.message || model.message || 'Waiting for Nest confirmation.', 'schedule-message');
     status.setAttribute('role', 'status'); body.append(status);
@@ -80,7 +89,8 @@ export function renderScheduleControls(device, { unit, live, send, refresh }) {
   if (view.confirm) {
     const prompt = node('div', undefined, 'schedule-confirm'); prompt.setAttribute('role', 'alertdialog');
     prompt.setAttribute('aria-label', 'Confirm schedule change'); prompt.append(node('p', view.confirm.message));
-    prompt.append(button('Confirm', () => void submit(view.confirm.payload, view.confirm.expected)));
+    prompt.append(button('Confirm', () => void submit(view.confirm.payload, view.confirm.expected),
+      view.confirm.payload.action === 'autoApply' ? live && !view.busy && model.learning !== false : enabled));
     prompt.append(button('Cancel', () => { view.confirm = null; draw(); }, !view.busy)); body.append(prompt);
   }
   const modes = Object.keys(model.modes);

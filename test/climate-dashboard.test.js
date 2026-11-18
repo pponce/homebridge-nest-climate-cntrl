@@ -91,6 +91,22 @@ test('runtime prunes old days and periodic sampling persists observed time', asy
   assert.equal(saved['T/2026-11-06'].observed, 15);
   assert.equal(saved['T/2026-11-07'].observed, 15);
 });
+test('background schedule learning applies without an open dashboard', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setInterval'], now: start });
+  const f = await fixture(t);
+  f.dashboard.update('T', 'Thermostat', { schedule_time_zone: 'UTC',
+    native_schedules: { autoSchedule: false, modes: { heat: [] } } }, 'A');
+  const record = f.dashboard.schedules.record('T');
+  record.autoApply = true;
+  record.events = ['2026-10-19', '2026-10-26', '2026-11-02'].map((date) => ({
+    at: Date.parse(date + 'T07:10:00Z'), value: 22, source: 'room', zone: 'UTC',
+  }));
+  assert.equal(f.requests.length, 0);
+  t.mock.timers.tick(30000);
+  await f.dashboard.schedules.applying;
+  assert.equal(f.requests.length, 1);
+  assert.deepEqual(f.requests[0][1], { temperature_schedules: { heat: [{ day: 1, time: 25200, heat: 22 }] } });
+});
 test('dashboard isolates non-climate resources and clears native sensor selection', async (t) => {
   const f = await fixture(t);
   f.dashboard.update('C', 'Camera', { online: true }, 'A');
@@ -445,4 +461,5 @@ test('web Nest temperature commands validate modes, limits, capability and stale
   assert.equal(dashboard.temperatureTarget('T').available, false);
   assert.equal(dashboard.temperatureTarget('missing').available, false);
 });
+
 

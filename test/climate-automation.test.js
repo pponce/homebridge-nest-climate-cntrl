@@ -539,6 +539,9 @@ test('the saved room target can be restored without pausing the sensor group', a
 
 test('scheduled targets expire manual adjustments only after native feedback, with no command echo loop', async (t) => {
   const f = await fixture(t, {});
+  f.dashboard.schedules.now = f.now;
+  f.dashboard.schedules.record('T').allowNestLearning = true;
+  f.dashboard.update('T', 'Thermostat', { native_schedules: { autoSchedule: true, modes: { heat: [] } } }, 'A');
   f.devices.push({ serialNumber: 'T', scheduleTimeZone: 'UTC' });
   f.dashboard.update('T', 'Thermostat', { schedules: { 0: { a: { time: 36060, 'temp-min': 19 } } } }, 'A');
   f.rules({ temperature: [temperatureRule] });
@@ -561,6 +564,8 @@ test('scheduled targets expire manual adjustments only after native feedback, wi
   assert.equal(f.commands.at(-1).target_temperature_low, 20.5);
   await f.engine.tick();
   assert.equal(f.rule('rooms').desiredTemperature, 19);
+  assert.equal(f.dashboard.schedules.record('T').events.length, 0,
+    'External target changes, scheduled targets and compensation do not train the preference learner');
 });
 
 test('an unconfirmed schedule recovers on late feedback while an ambiguous target pauses', async (t) => {

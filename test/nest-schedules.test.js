@@ -545,3 +545,274 @@ test('queued schedule guard tolerates unrelated changes but rejects edited-mode 
   await f.manager.action(f.payload('save', { mode: 'heat', entries: [{ ...row, heat: 22 }],
     scheduleRevision: f.manager.snapshot('test').scheduleRevisions.heat, confirmation: 'save-temperature-schedule' }));
 });
+
+function learnedChoices(f) {
+  f.manager.record('test').events = [2, 9, 16].map((day) => ({
+    at: Date.parse('2026-11-' + String(day).padStart(2, '0') + 'T15:10:00Z'),
+    value: 22, source: 'room', zone: 'America/Los_Angeles',
+  }));
+}
+
+async function enableAutomaticLearning(f) {
+  await f.manager.action(f.payload('autoApply', { value: true, confirmation: 'enable-auto-apply-learning' }));
+  await f.manager.applying;
+}
+
+test('automatic learning is opt-in, disables Nest learning first and waits for confirmation', async (t) => {
+  const f = await fixture(t);
+  learnedChoices(f);
+  assert.equal(f.manager.snapshot('test').autoApply, false);
+  await f.manager.applyLearned();
+  assert.equal(f.calls.length, 0);
+  await assert.rejects(f.manager.action(f.payload('autoApply', { value: true })), /confirm/);
+  await assert.rejects(f.manager.action(f.payload('autoApply', { value: 'yes' })), /Choose/);
+  await enableAutomaticLearning(f);
+  assert.equal(f.calls.length, 1);
+  assert.deepEqual(f.calls[0][1], { schedule_learning_enabled: false });
+  assert.equal(f.manager.record('test').allowNestLearning, false);
+  await f.manager.applyLearned();
+  f.advance(61000);
+  await f.manager.applyLearned();
+  assert.equal(f.calls.length, 1, 'An unconfirmed Off request is not replayed or bypassed');
+  f.data.native_schedules.autoSchedule = false;
+  await f.manager.applyLearned();
+  assert.equal(f.calls.length, 2);
+  assert.equal(f.calls[1][1].temperature_schedules.heat[0].heat, 22);
+  assert.ok(f.manager.snapshot('test').pending);
+  await f.manager.saving;
+});
+
+test('automatic learning preserves other entries and modes, confirms once, and survives restart', async (t) => {
+  const f = await fixture(t);
+  learnedChoices(f);
+  f.data.native_schedules.autoSchedule = false;
+  const unrelated = { day: 2, time: 36000, heat: 19 };
+  f.data.native_schedules.modes.heat.push(unrelated);
+  f.data.native_schedules.modes.cool = [{ day: 1, time: 36000, cool: 25 }];
+  await enableAutomaticLearning(f);
+  const expected = [{ ...row, heat: 22 }, unrelated];
+  assert.deepEqual(f.calls[0][1], { temperature_schedules: { heat: expected } });
+  await f.manager.applyLearned();
+  assert.equal(f.calls.length, 1);
+  f.data.native_schedules.modes.heat = expected;
+  await f.manager.applyLearned();
+  assert.equal(f.manager.snapshot('test').pending, null);
+  assert.equal(f.manager.snapshot('test').suggestions.length, 0);
+  await f.manager.saving;
+  const restarted = new NestSchedules(f.dashboard, f.manager.now);
+  await restarted.start();
+  assert.equal(restarted.snapshot('test').autoApply, true);
+  await restarted.applyLearned();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.data.native_schedules.modes.cool[0].cool, 25);
+});
+
+test('learning can coexist with Nest learning but their schedule events never train it', async (t) => {
+  const f = await fixture(t);
+  for (const source of ['schedule', 'nest-auto', 'compensation', 'eco', 'unknown']) {
+    await f.manager.observe('test', 23, source);
+  }
+  f.data.native_schedules.modes.heat = [{ ...row, heat: 23 }];
+  f.manager.snapshot('test');
+  await f.manager.applyLearned();
+  assert.equal(f.manager.record('test').events.length, 0);
+  await f.manager.observe('test', 22, 'room');
+  await f.manager.observe('test', 22, 'manual');
+  assert.equal(f.manager.record('test').events.length, 2);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.data.native_schedules.autoSchedule, true);
+});
+
+test('disabling learning disables automatic application; reenabling learning requires a new opt-in', async (t) => {
+  const f = await fixture(t);
+  f.data.native_schedules.autoSchedule = false;
+  await enableAutomaticLearning(f);
+  await f.manager.action(f.payload('learning', { value: false }));
+  assert.equal(f.manager.snapshot('test').autoApply, false);
+  await assert.rejects(f.manager.action(f.payload('autoApply', {
+    value: true, confirmation: 'enable-auto-apply-learning',
+  })), /Enable learning/);
+  await f.manager.action(f.payload('learning', { value: true }));
+  assert.equal(f.manager.snapshot('test').autoApply, false);
+  await enableAutomaticLearning(f);
+  await f.manager.action(f.payload('auto', { value: true, confirmation: 'enable-nest-learning' }));
+  assert.equal(f.manager.snapshot('test').autoApply, false, 'Explicit Nest On disables plugin automatic application');
+  assert.equal(f.manager.snapshot('test').learning, true);
+  assert.equal(f.manager.record('test').allowNestLearning, true);
+  f.data.native_schedules.autoSchedule = true;
+  await f.manager.applyLearned();
+  assert.equal(f.calls.length, 1);
+  await f.manager.saving;
+});
+
+for (const reason of ['disconnected', 'unknown learning', 'no heat schedule', 'no time zone', 'learning off', 'stopped', 'load error']) {
+  test('automatic application waits when ' + reason, async (t) => {
+    const f = await fixture(t);
+    learnedChoices(f);
+    f.manager.record('test').autoApply = true;
+    f.data.native_schedules.autoSchedule = false;
+    if (reason === 'disconnected') {
+      f.data.online = false;
+    } else if (reason === 'unknown learning') {
+      f.data.native_schedules.autoSchedule = null;
+    } else if (reason === 'no heat schedule') {
+      delete f.data.native_schedules.modes.heat;
+    } else if (reason === 'no time zone') {
+      delete f.data.schedule_time_zone;
+    } else if (reason === 'learning off') {
+      f.manager.record('test').learning = false;
+    } else if (reason === 'stopped') {
+      await f.manager.stop();
+    } else {
+      f.manager.loadError = 'Schedule preferences could not be read.';
+    }
+    assert.ok(f.manager.autoApplyBlock('test', f.manager.snapshot('test')));
+    await f.manager.applyLearned();
+    assert.equal(f.calls.length, 0);
+  });
+}
+
+test('automatic application skips an existing matching entry without a native write', async (t) => {
+  const f = await fixture(t);
+  learnedChoices(f);
+  f.data.native_schedules.autoSchedule = false;
+  f.data.native_schedules.modes.heat = [{ ...row, heat: 22 }];
+  await enableAutomaticLearning(f);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.manager.snapshot('test').suggestions.length, 0);
+});
+
+test('aging evidence does not reapply an entry changed externally; new intentional evidence can qualify', async (t) => {
+  const f = await fixture(t);
+  learnedChoices(f);
+  f.manager.record('test').events.unshift({ at: Date.parse('2026-10-26T14:10:00Z'),
+    value: 22, source: 'room', zone: 'America/Los_Angeles' });
+  f.data.native_schedules.autoSchedule = false;
+  await enableAutomaticLearning(f);
+  f.data.native_schedules.modes.heat = f.calls[0][1].temperature_schedules.heat;
+  f.manager.snapshot('test');
+  await f.manager.saving;
+  f.data.native_schedules.modes.heat = [{ ...row, heat: 20 }];
+  f.advance(21 * 86400000);
+  assert.equal(f.manager.snapshot('test').suggestions.length, 1);
+  await f.manager.applyLearned();
+  assert.equal(f.calls.length, 1);
+  const suggestion = f.manager.snapshot('test').suggestions[0];
+  await assert.rejects(f.manager.action(f.payload('apply', { id: suggestion.id })), /already attempted/);
+  f.manager.record('test').events.push({ at: Date.parse('2026-12-07T15:10:00Z'),
+    value: 22, source: 'room', zone: 'America/Los_Angeles' });
+  await f.manager.applyLearned();
+  assert.equal(f.calls.length, 2);
+});
+
+test('failed automatic writes stop, retain uncertainty and do not replay after acknowledgement or restart', async (t) => {
+  const f = await fixture(t, () => {
+    throw new Error('offline');
+  });
+  learnedChoices(f);
+  f.data.native_schedules.autoSchedule = false;
+  await enableAutomaticLearning(f);
+  assert.match(f.manager.snapshot('test').autoApplyMessage, /stopped/);
+  assert.ok(f.manager.snapshot('test').pending.failure);
+  const restarted = new NestSchedules(f.dashboard, f.manager.now);
+  await restarted.start();
+  await restarted.applyLearned();
+  assert.equal(f.calls.length, 1);
+  f.advance(61000);
+  await f.manager.action(f.payload('acknowledge'));
+  await f.manager.action(f.payload('autoApply', { value: false }));
+  await enableAutomaticLearning(f);
+  assert.equal(f.calls.length, 1);
+});
+
+test('late confirmation of a failed automatic request clears its block without replaying it', async (t) => {
+  const f = await fixture(t, () => {
+    throw new Error('late reply');
+  });
+  learnedChoices(f);
+  f.data.native_schedules.autoSchedule = false;
+  await enableAutomaticLearning(f);
+  f.data.native_schedules.modes.heat = f.calls[0][1].temperature_schedules.heat;
+  await f.manager.applyLearned();
+  assert.equal(f.manager.record('test').autoApplyError, undefined);
+  assert.equal(f.calls.length, 1);
+  await f.manager.saving;
+});
+
+test('queued automatic writes recheck consent, schedule, zone, connection and Nest learning', async (t) => {
+  for (const change of ['consent', 'schedule', 'zone', 'connection', 'nest']) {
+    const f = await fixture(t, async (_id, _values, options) => {
+      if (change === 'consent') {
+        await f.manager.action(f.payload('autoApply', { value: false }));
+      } else if (change === 'schedule') {
+        f.data.native_schedules.modes.heat = [];
+      } else if (change === 'zone') {
+        f.data.schedule_time_zone = 'UTC';
+      } else if (change === 'connection') {
+        f.data.online = false;
+      } else {
+        f.data.native_schedules.autoSchedule = true;
+      }
+      assert.equal(options.guard(), false);
+      throw new Error('queued write canceled');
+    });
+    learnedChoices(f);
+    f.data.native_schedules.autoSchedule = false;
+    await enableAutomaticLearning(f);
+    assert.ok(f.manager.record('test').pending.failure);
+  }
+});
+
+test('automatic processing is serialized and shutdown cancels a queued policy change', async (t) => {
+  let release;
+  let entered;
+  const ready = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const wait = new Promise((resolve) => {
+    release = resolve;
+  });
+  const f = await fixture(t, async (_id, _values, options) => {
+    entered();
+    await wait;
+    assert.equal(options.guard(), false);
+    throw new Error('shutdown');
+  });
+  f.manager.record('test').autoApply = true;
+  const first = f.manager.applyLearned();
+  assert.equal(f.manager.applyLearned(), first);
+  await ready;
+  const stopped = f.manager.stop();
+  release();
+  await stopped;
+  assert.equal(f.calls.length, 1);
+  assert.ok(f.manager.record('test').pending.failure, 'The queued policy write is canceled at shutdown');
+});
+
+test('preference persistence failure rolls back consent and sends no command', async (t) => {
+  const f = await fixture(t);
+  t.mock.method(f.manager, 'persist', async () => {
+    throw new Error('disk unavailable');
+  });
+  await assert.rejects(enableAutomaticLearning(f), /disk unavailable/);
+  assert.equal(f.manager.snapshot('test').autoApply, false);
+  assert.equal(f.calls.length, 0);
+});
+
+test('new preference fields are validated while legacy records retain manual approval', async (t) => {
+  const f = await fixture(t);
+  const legacy = { allowNestLearning: false, learning: true, events: [] };
+  for (const invalid of [{ autoApply: 'yes' }, { autoApplyError: false }, { autoHandled: [] },
+    { autoHandled: { invalid: 'date' } }, { pending: { action: 'auto', at: 1, value: false, autoApply: 'yes' } }]) {
+    await fs.writeFile(f.manager.file, JSON.stringify({ version: 1, records: { test: { ...legacy, ...invalid } } }));
+    const manager = new NestSchedules(f.dashboard);
+    await manager.start();
+    assert.ok(manager.loadError);
+  }
+  await fs.writeFile(f.manager.file, JSON.stringify({ version: 1, records: { test: legacy } }));
+  const manager = new NestSchedules(f.dashboard);
+  await manager.start();
+  assert.equal(manager.loadError, undefined);
+  assert.equal(manager.snapshot('test').autoApply, false);
+  await assert.rejects(manager.action({ serial: 'test', action: 'apply', expected: manager.snapshot('test').expected }), /Off/);
+});
