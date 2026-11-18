@@ -1088,7 +1088,7 @@ export class ClimateAutomation {
     for (const state of this.states.values()) {
       if (state.rule.kind === 'fan' && state.rule.targetIds.includes(id)) {
         state.fanAssignments = state.fanAssignments?.map((entry) => entry.id === id ?
-          { ...entry, selected: false, controller: null, override: reason, manualHold: fanManualHoldStatus(this, id) } : entry);
+            { ...entry, selected: false, controller: null, override: reason, manualHold: fanManualHoldStatus(this, id) } : entry);
         if (state.lastAction && (!state.lastAction.targetId || state.lastAction.targetId === id)) {
           state.lastAction = { ...state.lastAction, status: 'conflict',
             message: manual ? 'Automatic fan control yielded to a reported manual change.' :

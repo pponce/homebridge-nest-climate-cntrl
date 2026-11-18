@@ -1141,7 +1141,9 @@ export default class NestAccfactory {
 
           if (key === 'schedule_learning_enabled') {
             const native = readSchedules(this.#rawData[nest_google_device_uuid].value);
-            if (typeof value !== 'boolean' || native.autoSchedule === null) throw new Error('Auto-Schedule control unavailable');
+            if (typeof value !== 'boolean' || native.autoSchedule === null) {
+              throw new Error('Auto-Schedule control unavailable');
+            }
             setUpdateTrait('schedule_learning_settings', 'type.nestlabs.com/nest.trait.hvac.ScheduleLearningSettingsTrait',
               undefined, { scheduleLearningEnabled: value });
             updateElement.stateMask = { paths: ['scheduleLearningEnabled'] };
@@ -1155,7 +1157,8 @@ export default class NestAccfactory {
             }
             for (const [mode, entries] of Object.entries(value)) {
               const label = mode + '_schedule_settings';
-              setUpdateTrait(label, 'type.nestlabs.com/nest.trait.hvac.SetPointScheduleSettingsTrait', scheduleTrait(mode, entries, raw[label]));
+              setUpdateTrait(label, 'type.nestlabs.com/nest.trait.hvac.SetPointScheduleSettingsTrait',
+                scheduleTrait(mode, entries, raw[label]));
               updateElement.stateMask = { paths: ['setpoints'] };
               updatedTraits.push(structuredClone(updateElement));
             }

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import '../../scripts/build-dashboard-ui.js';
 
 let detail = 'Embedded, standalone and reverse-proxy browser checks passed';
-for (const file of ['maintenance/checks/dashboard-browser.mjs', 'maintenance/checks/dashboard-web-browser.mjs', 'maintenance/checks/dashboard-proxy-browser.mjs', 'maintenance/checks/heating-response-browser.mjs', 'maintenance/checks/fan-speed-browser.mjs', 'maintenance/checks/sensor-setup-browser.mjs']) {
+for (const file of ['maintenance/checks/schedule-controls-browser.mjs', 'maintenance/checks/dashboard-browser.mjs', 'maintenance/checks/dashboard-web-browser.mjs', 'maintenance/checks/dashboard-proxy-browser.mjs', 'maintenance/checks/heating-response-browser.mjs', 'maintenance/checks/fan-speed-browser.mjs', 'maintenance/checks/sensor-setup-browser.mjs']) {
   const result = spawnSync(process.execPath, [file], { encoding: 'utf8', env: process.env, maxBuffer: 20 * 1024 * 1024 });
   const output = (result.stdout || '') + (result.stderr || '');
   process.stdout.write(output);
@@ -20,5 +20,6 @@ for (const file of ['maintenance/checks/dashboard-browser.mjs', 'maintenance/che
   }
 }
 if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, 'detail=' + detail + '\n');
+
 
 

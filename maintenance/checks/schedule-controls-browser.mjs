@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 const require = createRequire(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES ? process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES + '/playwright/package.json' : import.meta.url);
-const { chromium } = require('playwright');
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const markup = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/homebridge-ui/dashboard/styles.css"><main style="padding:16px"><h2>Upstairs · Dining Room</h2><div id="tile"></div></main><script type="module">
 import { renderScheduleControls } from '/homebridge-ui/public/schedule-controls.js';
 window.requests=[]; window.device={serial:'TEST',data:{description:'Upstairs · Dining Room'},scheduleControls:{autoSchedule:false,modes:{heat:[{day:1,time:25200,heat:21}],cool:[]},expected:'test-revision',connected:true,learning:true,zone:'America/Los_Angeles',suggestions:[]}};

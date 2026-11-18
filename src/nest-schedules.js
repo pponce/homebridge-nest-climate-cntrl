@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
-  scheduleTimeZone
+  scheduleTimeZone,
 } from '../homebridge-ui/public/climate-utils.js';
 
 export const SCHEDULE_DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
@@ -115,7 +115,7 @@ export function schedulesMatch(actual, requested) {
     const observed = actual[i];
     return observed?.day === entry.day && observed.time === entry.time && ['heat', 'cool'].every((key) =>
       entry[key] === undefined ? observed[key] === undefined :
-      Number.isFinite(observed[key]) && Math.abs(observed[key] - entry[key]) <= 0.051);
+        Number.isFinite(observed[key]) && Math.abs(observed[key] - entry[key]) <= 0.051);
   });
 }
 const hash = (data) => crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex');
@@ -123,15 +123,15 @@ const hash = (data) => crypto.createHash('sha256').update(JSON.stringify(data)).
 function localTime(at, zone) {
   try {
     const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
-        timeZone: zone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        weekday: 'long',
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23',
-      })
+      timeZone: zone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
       .formatToParts(at).map((p) => [p.type, p.value]));
     return {
       date: parts.year + '-' + parts.month + '-' + parts.day,
@@ -246,7 +246,7 @@ export class NestSchedules {
     return this.records[serial] ??= {
       allowNestLearning: false,
       learning: true,
-      events: []
+      events: [],
     };
   }
 
@@ -293,7 +293,7 @@ export class NestSchedules {
   native(serial) {
     const native = this.dashboard.devices.get(serial)?.data.native_schedules ?? {
       autoSchedule: null,
-      modes: {}
+      modes: {},
     };
     return {
       autoSchedule: this.fresh(serial, 'schedule_learning_settings') ? native.autoSchedule : null,
@@ -307,8 +307,8 @@ export class NestSchedules {
     const pending = record.pending;
     if (pending && this.connected(serial)) {
       const matched = pending.action === 'auto' ? native.autoSchedule === pending.value && this.fresh(serial,
-          'schedule_learning_settings', pending.at) :
-        Object.entries(pending.modes).every(([mode, entries]) => this.fresh(serial, mode + '_schedule_settings', pending.at) &&
+        'schedule_learning_settings', pending.at) :
+          Object.entries(pending.modes).every(([mode, entries]) => this.fresh(serial, mode + '_schedule_settings', pending.at) &&
           schedulesMatch(native.modes[mode], entries));
       if (matched) {
         record.message = 'Confirmed by Nest.';
@@ -399,7 +399,7 @@ export class NestSchedules {
     const {
       serial,
       action,
-      expected
+      expected,
     } = payload ?? {};
     if (!['auto', 'save', 'clear', 'approve', 'dismiss', 'learning', 'check', 'acknowledge'].includes(action) || typeof serial !==
       'string') {
@@ -494,7 +494,7 @@ export class NestSchedules {
         }
         modes = {
           heat: validateEntries('heat', [...model.modes.heat.filter((e) => e.day !== suggestion.day || e.time !== suggestion
-          .time), {
+            .time), {
             day: suggestion.day,
             time: suggestion.time,
             heat: suggestion.heat,

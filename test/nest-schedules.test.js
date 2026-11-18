@@ -9,7 +9,7 @@ import {
   readSchedules,
   scheduleTrait,
   learningSuggestions,
-  schedulesMatch
+  schedulesMatch,
 } from '../src/nest-schedules.js';
 const row = {
   day: 1,
