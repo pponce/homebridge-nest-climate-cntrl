@@ -252,7 +252,11 @@ function usable(device) {
   const account = state.status.accounts?.find((entry) => entry.id === device.account);
   return state.live && account?.authorised && account?.observing && !device.needsUpdate && device.data?.online === true;
 }
-function thermostats() { return (state.status.devices || []).filter((device) => device.type === 'Thermostat'); }
+function thermostats() {
+  return (state.status.devices || []).filter((device) => device.type === 'Thermostat').sort((a, b) =>
+    (a.data?.description || 'Thermostat').localeCompare(b.data?.description || 'Thermostat', undefined, { numeric: true, sensitivity: 'base' }) ||
+    String(a.serial).localeCompare(String(b.serial)));
+}
 function deviceOptions(serial, create = false) {
   let options = state.config?.devices?.find((entry) => entry.serialNumber === serial);
   if (!options && create) { options = { serialNumber: serial }; (state.config.devices ??= []).push(options); }
@@ -741,9 +745,9 @@ function renderThermostats() {
       }
       controls.append(feedback);
     }
+    controls.append(renderTemperatureController(device, expanded.has(device.serial)));
     controls.append(renderScheduleControls(device, { unit: temperatureUnit(), live: state.live,
       send: (body) => api('/schedules', { method: 'POST', body }), refresh: refreshStatus }));
-    controls.append(renderTemperatureController(device, expanded.has(device.serial)));
     for (const setup of state.status.automation?.sensorSetups || []) {
       if (setup.thermostatId !== device.serial) continue;
       const section = el('div', undefined, 'preview-box');

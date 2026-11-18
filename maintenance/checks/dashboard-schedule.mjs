@@ -6,7 +6,7 @@ import { navigate } from './dashboard-navigation.mjs';
 export async function checkScheduleOverview(browser, base, output) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
   const errors = []; const writes = [];
-  let mode = 'heat'; let control = 'interval'; let eco = false; let offline = false; let runtimeMode = 'recorded';
+  let mode = 'heat'; let control = 'interval'; let eco = false; let offline = false; let runtimeMode = 'recorded'; let reverseDevices = true;
   const rule = () => ({ id: 'rooms', kind: 'temperature', name: 'Living room average', thermostatId: 'T1',
     enabled: true, temperatureControl: control, desiredTemperature: 21, roomTemperature: 20.5 });
   const responseFor = (endpoint) => {
@@ -29,7 +29,7 @@ export async function checkScheduleOverview(browser, base, output) {
             4: { morning: { time: 25200, 'temp-min': 19, 'temp-max': 32 } },
           },
         },
-      })) };
+      })).sort((a, b) => reverseDevices ? b.serial.localeCompare(a.serial) : a.serial.localeCompare(b.serial)) };
     throw new Error('Unexpected schedule fixture endpoint: ' + endpoint);
   };
   page.on('pageerror', (error) => errors.push(error.message));
@@ -47,6 +47,9 @@ export async function checkScheduleOverview(browser, base, output) {
   try {
     await page.goto(base);
     await page.locator('#schedule-thermostat').getByText('Living room', { exact: true }).waitFor();
+    const tileNames = () => page.locator('#thermostats .card-title h3').allTextContents();
+    assert.deepEqual(await tileNames(), ['Living room', 'Upstairs'], 'Tile order is independent of device discovery order');
+    assert.equal(await page.locator('#thermostats .temperature-controller + .schedule-controls').count(), 2, 'Schedule controls follow the temperature controller on each tile');
     assert.equal(await page.locator('#schedule-mode').innerText(), 'Heat mode');
     assert.match(await page.locator('#schedule-preview').innerText(), /Thu · 20:30[\s\S]*Fri · 07:00[\s\S]*Mon · 06:45/);
     assert.match(await page.locator('#schedule-preview').innerText(), /Heat 68.9°F/);
@@ -79,7 +82,8 @@ export async function checkScheduleOverview(browser, base, output) {
     assert.equal(await page.locator('#schedule-thermostat').innerText(), 'Upstairs');
     assert.match(await page.locator('#schedule-control').innerText(), /built-in temperature sensor/);
     assert.doesNotMatch(await page.locator('#schedule-control').innerText(), /Living room average/);
-    await refresh();
+    reverseDevices = false; await refresh();
+    assert.deepEqual(await tileNames(), ['Living room', 'Upstairs'], 'Refresh preserves tile order when the status order changes');
     assert.equal(await page.locator('#runtime-device').inputValue(), 'T2', 'Refresh preserves the selected thermostat');
     await page.locator('#runtime-device').selectOption('T1');
     control = 'paused'; await refresh();
@@ -141,3 +145,4 @@ export async function checkScheduleOverview(browser, base, output) {
     await page.close();
   }
 }
+

@@ -1,6 +1,7 @@
 <!-- Modified by pponce for Nest Climate Cntrl; derived from Nest Accfactory. See NOTICE. -->
 ## Unreleased
 
+- Keep Overview thermostat tiles in alphabetical order and place temperature schedule controls below each tile's temperature controller.
 - Preserve open weekly schedule drafts when Auto-Schedule or a different schedule mode changes. Changes to the schedule being edited still require review before saving.
 - Refresh local dashboard status every two seconds while schedule changes await confirmation, for up to one minute. Show failed requests separately and provide downloadable redacted Nest write responses.
 - Use the native protobuf field name when changing Auto-Schedule.
