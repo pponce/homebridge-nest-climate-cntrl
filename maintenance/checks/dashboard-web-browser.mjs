@@ -1,6 +1,7 @@
 import { checkRuleWindows } from './dashboard-rule-windows.mjs';
 import { checkRuleExplanations } from './dashboard-rule-explanations.mjs';
 import { checkScheduleOverview } from './dashboard-schedule.mjs';
+import { checkSessionStartup } from './dashboard-session.mjs';
 // Browser fixture only. No Nest, Homebridge or other real device requests are made.
 import http from 'node:http';
 import fs from 'node:fs/promises';
@@ -169,6 +170,7 @@ try {
   await page.getByRole('button', { name: 'Sign in', exact: false }).click();
   await page.getByText('Connected', { exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Living room', exact: true }).waitFor();
+  await checkSessionStartup(browser, base);
   await checkRuleExplanations(page, output, 'standalone');
   await checkTextContrast();
   assert.equal(await page.locator('#http-session-warning').isVisible(), true);

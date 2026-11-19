@@ -343,21 +343,27 @@ function showLogin(message = '', setup = false) {
   ecoCommands.clear();
   for (const command of targetCommands.values()) clearTimeout(command.timer);
   targetCommands.clear(); targetEdits.clear();
-  $('app').hidden = true; $('login-screen').hidden = false;
+  $('session-screen').hidden = true; $('app').hidden = true; $('login-screen').hidden = false;
   $('login-error').textContent = message; $('login-error').hidden = !message;
   $('login-form').hidden = setup; $('setup-retry').hidden = !setup;
   $('login-title').textContent = setup ? 'A little setup first.' : 'Welcome home.';
   $('login-help').textContent = setup ? 'Create your web login in Homebridge → Nest Climate Cntrl → Menu → Accounts & web access, then return here.' : 'Sign in with your Climate Cntrl web account.';
 }
+function showSessionStatus(message = 'Loading dashboard…', retry = false) {
+  $('app').hidden = true; $('login-screen').hidden = true; $('session-screen').hidden = false;
+  $('session-message').textContent = message;
+  $('session-spinner').hidden = retry; $('session-retry').hidden = !retry;
+}
 async function checkSession() {
+  showSessionStatus();
   try {
     state.session = await api('/session', { anonymous: true });
     if (state.session.authenticated) await enterDashboard();
     else showLogin('', state.session.setupRequired);
-  } catch { showLogin('Cannot reach the dashboard. Check the Nest child bridge and try again.'); }
+  } catch { showSessionStatus('Cannot reach the dashboard. Check the Nest child bridge and try again.', true); }
 }
 async function enterDashboard() {
-  $('login-screen').hidden = true; $('app').hidden = false; $('signed-in-name').textContent = state.session.username || 'Web account';
+  $('session-screen').hidden = true; $('login-screen').hidden = true; $('app').hidden = false; $('signed-in-name').textContent = state.session.username || 'Web account';
   $('password').value = '';
   route(false);
   if (host && !host.initialConfigured) {
@@ -383,6 +389,7 @@ $('login-form').addEventListener('submit', async (event) => {
   finally { $('sign-in').disabled = false; }
 });
 $('setup-retry').addEventListener('click', checkSession);
+$('session-retry').addEventListener('click', checkSession);
 async function signOut() {
   if (state.restarting) return;
   if (state.dirty && !await confirmAction('Sign out without saving?', 'Your unsaved changes will be discarded.', 'Discard and sign out')) return;

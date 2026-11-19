@@ -197,8 +197,17 @@ try {
   page.on('request', (request) => {
     if (/\/embedded\/.+\/.+\.(?:html?|xhtml)(?:[?#]|$)/i.test(request.url())) nestedHtmlRequests.push(request.url());
   });
-  await page.goto(embeddedUrl);
+  let receiveStartupModule;
+  const startupModule = new Promise((resolve) => { receiveStartupModule = resolve; });
+  await page.route('**/embedded/climate/app.js', (route) => receiveStartupModule(route), { times: 1 });
+  await page.goto(embeddedUrl, { waitUntil: 'commit' });
+  const heldModule = await startupModule;
+  await page.locator('#session-screen').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#login-screen').isVisible(), false);
+  assert.equal(await page.locator('#app').isVisible(), false);
+  await heldModule.continue();
   await page.getByRole('heading', { name: 'Your thermostats', exact: true }).waitFor();
+  assert.equal(await page.locator('#session-screen').isVisible(), false);
   await checkRuleExplanations(page, output, 'embedded');
   assert.deepEqual(nestedHtmlRequests, []);
   await checkCompactNavigation(page, output, 'embedded-desktop');

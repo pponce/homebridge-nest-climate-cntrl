@@ -32,7 +32,7 @@ NODE
   }
   climate_install_release() {
     local project="$HOME/devProjects/homebridge-nest-climate-cntrl"
-    local version='0.6.11'
+    local version='0.6.12'
     local package='homebridge-nest-climate-cntrl'
     local directory="$project/maintenance/releases/v$version"
     local archive="$package-$version.tgz"
@@ -71,7 +71,7 @@ NODE
       return 1
     fi
     printf '%s\n' 'Update complete. Open the climate dashboard and refresh the page.'
-    printf '%s\n' 'For a read-only sensor report: Overview -> Diagnose Nest sensor selection -> Download sensor diagnostics.'
+    printf '%s\n' 'For a read-only sensor report: Settings -> Diagnostics & troubleshooting -> Diagnose Nest sensor selection -> Download sensor diagnostics.'
     printf '%s\n' 'Enabled rules recover after current feedback arrives. Resume only rules that are paused.'
   }
   if climate_install_release; then
@@ -82,5 +82,6 @@ NODE
   unset -f climate_install_release climate_download_release_asset
   printf '%s\n' '=== Nest Climate release update END ==='
 }
+
 
 

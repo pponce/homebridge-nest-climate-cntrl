@@ -1,138 +1,33 @@
 <!-- Modified by pponce for Nest Climate Cntrl; derived from Nest Accfactory. See NOTICE. -->
-## v0.6.12-beta.5
+## v0.6.12
 
-**Choose how room targets follow thermostat changes, with clearer Overview controls.**
+**Room-temperature target modes, editable Nest schedules and optional preference learning.**
 
 ### Temperature rules
-- Add **Room target mode** under **Climate rules → Temperature → your rule**. **Follow thermostat and schedule** starts with confirmed thermostat intent, follows confirmed schedule targets, and needs no fixed-temperature field. **Maintain fixed room temperature** maintains the value entered in **Fixed room temperature**.
-- Keep selected sensors, averaging, compensation limits, update intervals, priorities, occupancy conditions and time windows in both modes. Switching an active rule to Follow retains its room target rather than adopting an already compensated Nest target.
-- While a fixed rule is selected, pause plugin learning and automatic application without erasing their saved preferences. On supported thermostats, request Nest Auto-Schedule off even after an explicit On override, and wait for reported confirmation before control. Prevent enabling Nest learning or applying learned entries while that fixed rule is selected.
-- Preserve existing weekly entries. Fixed rules keep their own room target when those entries run. Direct Nest or Apple Home target changes pause fixed rules; Resume restores the fixed target. Edit fixed targets in Climate rules. Eco suspension and automatic recovery preserve the fixed target.
-- Retain configuration compatibility for rules without an explicit mode, and preserve running room intent across restart and eligible rule handoffs.
+- Choose **Follow thermostat and schedule** or **Maintain fixed room temperature** under **Climate rules → Temperature → your rule → Room target mode**. Follow mode starts from confirmed thermostat intent and adopts confirmed scheduled targets. Fixed mode maintains the value entered in **Fixed room temperature**.
+- Both modes use the selected sensors and averaging, adjustment limit, minimum update interval, rule priority, occupancy conditions and time windows. Existing rules retain their configuration compatibility and current room target across restart and eligible rule changes.
+- While a fixed rule is selected, pause plugin learning and automatic application without erasing their saved preferences. On supported thermostats, request Nest Auto-Schedule off and wait for confirmation. Existing weekly entries remain; fixed rules retain their own room target when those entries run. Direct Nest or Apple Home target changes pause fixed control; **Resume** restores the fixed target. Edit fixed temperatures in Climate rules.
+- Temporarily suspend temperature control during Eco and recover automatically when Eco ends and current feedback permits. **Require Resume after Eco** provides an optional manual recovery policy. Explicit pauses and conflicting changes to mode, lock or active sensor still require review.
 
-### Overview
-- Show the selected target mode and distinguish fixed room targets from scheduled or manual room targets in controller details and Coming up.
-- Match **Temperature schedule** to the bordered, collapsible **Temperature controlled by** section.
-- Label active control **Plugin Temp Rule** in green, or amber between updates with a description explaining the interval wait.
-- Keep separate **Nest Auto-Schedule**, **Plugin learning**, and **Plugin auto-apply** badges visible when collapsed. Show On in green, Off in muted red, and Paused, Waiting or Needs attention in amber; identify offline Nest state as last reported. Saved On preferences paused by a fixed rule show Paused.
-- Add a separate **Off · 0%** row to fan speed graphs. The reported-state marker shows Off even when the fan retains its last speed; running-speed curves and run conditions remain separate. Unknown feedback is not displayed as Off.
-- Retain the automatic Overview refresh when returning from Climate rules.
+### Schedules and learning
+- View Nest Auto-Schedule, edit weekly Heat/Cool/range entries in Fahrenheit or Celsius, and request clearing of editable temperature schedules from each Overview thermostat tile. Turning Auto-Schedule off stops Nest learning and preserves existing weekly entries.
+- Temperature rules request Nest Auto-Schedule off by default on supported thermostats. Enabling it displays a warning about room-average compensation influencing Nest learning. Fixed rules and plugin automatic application require Nest Auto-Schedule off.
+- **Plugin learning** suggests heating entries after similar intentional room-target choices on three separate dates for the same weekday and half-hour. It uses supported dashboard and Apple Home changes; scheduled changes, Nest Auto-Schedule edits, compensation and Eco events do not train it.
+- Approve suggestions individually, or opt into **Plugin auto-apply**. Automatic application defaults off, explains that it turns Nest Auto-Schedule off, and waits for confirmed Off before saving qualifying entries. It runs with the dashboard closed, preserves unrelated schedule entries and pauses while a fixed rule is selected. Learned entries are saved into Nest's heating schedule; Nest executes them.
+- Confirm writes only after fresh matching Nest feedback. Preserve drafts across refreshes and unrelated schedule changes, reject conflicting edits before saving, and retain failed or uncertain requests for review without automatic replay. Provide redacted write-response diagnostics and faster dashboard confirmation polling.
 
-### Validation and scope
-- Automated regression coverage checks target initialization, schedule confirmation, manual overrides, Eco recovery, restart, mode switches, rule handoffs, learning suspension/resumption, queued-write guards and configuration validation.
-- Browser checks cover both dashboard hosts, mode-specific fields, saving, Celsius/Fahrenheit input, paused controls, collapsed status badges and phone layouts. Release gates also check the supported Node/Homebridge matrix, package installation and publication helpers.
-- Complete physical-thermostat behavior still requires live validation. Automatic application remains opt-in. Nest Auto-Schedule off preserves weekly entries and is not automatically restored when a fixed rule ends.
+### Overview and feedback
+- Show **Loading dashboard…** while checking the saved web session. Open the dashboard for an authenticated session, show sign-in only when required, and offer **Try again** if the session check cannot reach the dashboard.
+- Keep thermostat tiles in a stable alphabetical order and refresh live status when returning from Climate rules.
+- Show **Temperature schedule** as a bordered, collapsible section below **Temperature controlled by**. Keep separate **Nest Auto-Schedule**, **Plugin learning**, and **Plugin auto-apply** badges visible when collapsed: green for On, muted red for Off, amber for Paused, Waiting or Needs attention.
+- Show **Plugin Temp Rule** in green during active control and amber between updates, with an explanation of the minimum update interval. Controller details and Coming up identify the selected target mode.
+- Add a separate **Off · 0%** row to fan graphs. The reported-state marker shows Off even when a fan retains its previous speed. The running-speed curve remains separate from the condition that turns the fan on or off; unknown feedback does not imply Off.
+- Require current-session Google feedback after reconnects, clear explicitly invalid readings, preserve omitted fields in partial updates and ignore retired Observe callbacks. Sensor and Home/Away status use current-session feedback.
 
-**Updating:** Reload the dashboard after installation. Open **Climate rules → Temperature → your rule → Room target mode**, choose a mode and save. Fixed mode reveals its temperature field and explains the learning changes before saving.
-
-This GitHub prerelease includes a checksummed package and npm publication helper for the **beta** channel; **latest** is unchanged.
-
-## v0.6.12-beta.4
-
-**Optional automatic application of learned room-temperature preferences.**
-
-### Learning controls
-- Keep **Learn room-temperature preferences** separate from **Automatically apply learned preferences** on each Overview thermostat tile. Automatic application defaults off, including for existing installations.
-- Enabling automatic application shows a confirmation explaining that Nest Auto-Schedule will be turned off. The plugin requests Off immediately and waits for matching Nest feedback before saving qualifying heating suggestions. Existing weekly entries are retained.
-- With automatic application enabled, current and future qualifying suggestions are saved without individual approval. Checks continue every 30 seconds with the dashboard closed. Each suggestion adds or replaces its own weekday/time entry while preserving other entries and schedule modes.
-- Turning learning off also turns automatic application off. Turning learning back on leaves automatic application off until explicitly enabled. Turning Nest Auto-Schedule on through the dashboard turns our automatic application off while allowing preference learning to continue.
-
-### Confirmation and control
-- Refresh live status when returning to Overview so temperature-rule changes appear without pressing Refresh. Unsaved rule edits are preserved.
-- Require a current connection, heating schedule and schedule time zone before automatically saving entries. Queued writes recheck consent and reported state. Matching entries are not rewritten, and failed or uncertain writes are not automatically replayed after acknowledgement or restart.
-- Learn only from supported intentional room-target changes in the dashboard and Apple Home. Nest Auto-Schedule edits, scheduled target changes, compensation and Eco events do not train this learner.
-- Temperature rules stay enabled. A confirmed scheduled heating target becomes the rule's desired room temperature; the selected sensors, adjustment limit and update interval continue to govern compensation.
-
-### Validation
-- Automated checks cover opt-in persistence, Nest Auto-Schedule handoff, delayed confirmation, background execution, failure/restart handling, duplicate prevention, queued cancellation, unrelated schedule preservation and exclusion of automatic changes from learning.
-- Browser checks cover the confirmation message, cancellation, independent controls and mobile layout. Release validation includes the supported Node/Homebridge matrix, package installation and installer/publisher simulations.
-- The complete automatic-application flow still requires live thermostat validation; automated tests do not establish physical-device execution.
-
-**Updating:** Reload the dashboard after installing. Existing learning preferences are retained, and automatic application starts off. Open **Temperature schedule**, leave learning enabled, then select **Automatically apply learned preferences** and review the confirmation to opt in.
-
-See the [dashboard guide](https://github.com/pponce/homebridge-nest-climate-cntrl/blob/v0.6.12-beta.4/WEB_DASHBOARD.md#temperature-schedules-and-room-preference-learning).
-
-This is a GitHub prerelease. The publication helper publishes its tested package to npm's **beta** channel and leaves **latest** unchanged.
-
-## v0.6.12-beta.3
-
-**More reliable schedule controls and a consistent Overview layout.**
-
-### Schedule controls
-- Send Nest Auto-Schedule On/Off requests with the native protobuf field mask expected by Google.
-- Keep open weekly schedule drafts usable when Auto-Schedule or another schedule mode changes. Saving still requires review if the weekly schedule being edited has changed.
-- Check local dashboard status every two seconds while a schedule request awaits confirmation, for up to one minute. Google acceptance and reported thermostat state remain separate; a request is complete only after matching fresh feedback.
-- Identify failed requests clearly and retain them for review without automatic replay.
-- View and download the complete redacted Nest write response, including decoded operation details and transport metadata. The last response remains available after confirmation or restart; omitted binary data and diagnostic limits are marked explicitly.
-
-### Overview
-- Display thermostat tiles alphabetically, with a stable device identifier resolving duplicate names.
-- Place **Temperature schedule · Nest Auto-Schedule** directly below each thermostat's **Temperature controlled by** box.
-
-### Validation and beta scope
-- Validation covers scoped schedule conflicts, queued-write guards, native request fields, redacted response handling, pending-request polling, tile order and responsive dashboard behavior.
-- Release checks include lint, coverage and build checks across six Node/Homebridge combinations, dashboard browser checks, package installation, and installer/publisher success and failure paths.
-- Schedule clearing, entry deletion and approved suggestion writes still require device-specific validation. Automated tests do not establish physical thermostat behavior.
-
-**Updating:** Reload the dashboard after installation. Reopen any schedule editor that was already open during the update. Turning Nest Auto-Schedule off stops learning but preserves the existing weekly schedule. Room-temperature preference learning remains optional and saves suggestions to Nest only after approval.
-
-See the [dashboard guide](https://github.com/pponce/homebridge-nest-climate-cntrl/blob/v0.6.12-beta.3/WEB_DASHBOARD.md).
-
-This is a GitHub prerelease. The attached package can be installed directly for testing.
-
-## v0.6.12-beta.2
-
-**Native weekly schedule controls and approved room-temperature learning.**
-
-### Functional changes
-- Expand schedule controls on each Overview thermostat tile to view Nest Auto-Schedule, edit weekly Heat/Cool/range entries, or request clearing of reported editable temperature schedules.
-- Temperature rules request Auto-Schedule off by default on supported thermostats, preserving the existing weekly schedule. Enabling it requires confirming a warning that room-average compensation can influence Nest learning; the explicit On override is remembered.
-- Learn heating preferences from intentional room-temperature choices, excluding automatic compensation, Eco and schedule events. Suggestions require similar choices on at least three distinct dates for the same weekday and half-hour. Approve a suggestion to merge it into Nest's heating schedule, or dismiss it without a device write.
-- Edit schedules in the selected Fahrenheit/Celsius units. Unsaved drafts survive dashboard refreshes; stale drafts are rejected before writing.
-- Require current-session reported feedback for write confirmation. Uncertain requests persist across restart without automatic replay. Unsupported controls are shown as unavailable.
-- Includes the Eco suspension, automatic recovery and Google feedback improvements from beta.1.
-
-### Validation
-- Automated checks cover schedule validation, native request construction, default learning policy and overrides, persistence, stale feedback, approved suggestions, and authenticated dashboard routes.
-- Dashboard browser checks cover phone-width layout, toggle warnings, Fahrenheit editing, draft retention and clear cancellation.
-- Release validation runs lint, coverage, build and packaging checks across six supported Node/Homebridge combinations, plus dashboard browser checks and installer/publisher checks.
-
-### Beta limitations
-- Live Google/Nest acceptance and physical thermostat behavior have not been verified. Schedule editing, clearing and Auto-Schedule writes require device validation; readable traits alone do not establish write permission.
-- Clearing uses setpoint replacement. Removal of existing entries must be confirmed by Nest feedback; a submitted request is not presented as completed without matching feedback.
-- Approved learning currently adds heating schedule entries. This does not create a separate local schedule executor.
-
-**Updating:** Reload the dashboard after updating. An active temperature rule may request Auto-Schedule off when it next qualifies to control heating. Review each thermostat's reported state and pending actions in Overview. Existing accessory pairing and saved weekly schedules are retained unless you explicitly edit or clear them.
-
-See [dashboard setup and usage](https://github.com/pponce/homebridge-nest-climate-cntrl/blob/v0.6.12-beta.2/WEB_DASHBOARD.md).
-
-This is a GitHub prerelease. npm publication uses the **beta** channel and does not change **latest**.
-
-## v0.6.12-beta.1
-
-**Eco suspension with automatic recovery and fresher Google feedback for climate rules.**
-
-### Functional changes
-- Temperature rules temporarily suspend while Nest reports Eco and recover automatically when Eco ends and current readings and control requirements permit. No compensating heating target is sent during Eco.
-- Enable **Require Resume after Eco** on a temperature rule to keep it paused until you resume it. The default is automatic recovery, including for existing rules without this option.
-- Recovery uses the current Nest schedule target when available, retains room-temperature intent otherwise, and respects the adjustment interval. Explicit user pauses and conflicts involving mode, lock or active sensor still require review.
-- Direct Eco requests wait for reported Eco state; rejected requests and unconfirmed requests that time out pause for review.
-
-### Fixes
-- After Google reconnects, climate control waits for the required traits from the current Observe session. A partial update cannot make cached readings ready prematurely.
-- Explicit invalid readings clear affected dashboard values; ordinary deltas preserve fields they omit. Room sensors and Home/Away feedback also require current-session data.
-- Callbacks from retired Observe sessions cannot overwrite current feedback, including when a transport is reused.
-- Preserve trait receipt times, state types and version metadata. Heating feedback is described as **Matching heating target reported by Google**, without implying independently verified physical-device execution.
-
-### Regression coverage
-- Tests cover partial and invalid updates, reconnect recovery, retired callbacks, room-sensor and Home/Away freshness, accepted matching-target feedback and full platform delivery.
-- Eco tests cover default suspension/recovery, opt-in Resume, explicit pauses, fresh-data requirements, schedule recovery, direct-command success/failure, restart recovery and lock conflicts.
-- Validation includes lint, coverage, build, migration and package checks across Node 22/24/26 and the supported Homebridge matrix, plus dashboard/browser checks. Release packaging also exercises installer and npm-publisher success and failure paths.
-- Hardware and live Google/Nest backend behavior have not been verified by these automated tests.
-
-**Updating:** Reload the dashboard after updating. An already-paused rule requires **Resume** once; ambiguous saved pauses are not automatically cleared. Future Eco periods use the selected recovery policy. Existing accessory pairing is retained.
-
-This is a GitHub prerelease. npm publication uses the **beta** channel.
+### Updating and validation
+- Reload the dashboard after installation. Existing accessory pairing is retained. Plugin automatic application remains opt-in. An already-paused temperature rule requires **Resume** once; future Eco periods use its selected recovery policy. Nest Auto-Schedule is not automatically reenabled when a fixed rule ends.
+- Release checks cover lint, automated regression tests, coverage, builds, six supported Node/Homebridge combinations, both dashboard hosts, package installation and installer/publisher failure paths. Automated tests do not establish physical thermostat behavior; device-specific schedule clearing and the complete automatic-application flow still need live validation.
+- The GitHub release includes a checksummed package, installer and npm publisher for the **latest** channel. See the [dashboard guide](https://github.com/pponce/homebridge-nest-climate-cntrl/blob/v0.6.12/WEB_DASHBOARD.md) for setup and usage.
 
 ## v0.6.11
 
