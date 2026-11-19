@@ -2,11 +2,13 @@
 
 ## Objective and repository
 
-Improve intentional heating-schedule preference learning, expose its settings, explain heating-response observation alongside Nest control, and move Climate rules above Sensors & fans.
+Improve intentional heating-schedule preference learning, expose its settings, explain heating-response observation alongside Nest control, move Climate rules above Sensors & fans, and group thermostat settings into clear collapsible cards.
 
 - Repository: https://github.com/pponce/homebridge-nest-climate-cntrl
 - Remote base: `0bc0406173d9c19b444aa61cc7cf794f71a1ad31`, main / v0.6.12.
 - Branch: `feature/schedule-learning-patterns`.
+- Draft PR: https://github.com/pponce/homebridge-nest-climate-cntrl/pull/43.
+- Validated implementation commit: `379e1389ff7957f33140d4a471b3ac28643f2540`.
 - No version change, release, npm publication, or live-device setting changes are part of this task.
 
 ## Completed changes and decisions
@@ -19,21 +21,24 @@ Improve intentional heating-schedule preference learning, expose its settings, e
 - Settings use the existing config save/stage flow, strict shared validation, Celsius storage and Fahrenheit difference conversion. They apply without restarting and do not enable auto-apply.
 - Heating-response observation remains advisory. Help explains True Radiant, Early-On, Heat Pump Balance, target-write intervals and adjustment limits. No predictive heating controller or equipment-timing setting was added.
 - Sidebar and compact menu share the reordered navigation.
+- Each thermostat's settings are contained in one bordered card, collapsed by default on a fresh page load. Its summary shows heating type, configured rule count, response observation, Home display preference and Apple Home extras, including unsaved changes. Cards expand independently and preserve their state through edits and saves. The Apple Home settings have a separate inner border. Saving an invalid field reopens its containing sections for correction.
 
 ## Validation checkpoint
 
-- 263 focused unit/integration tests passed across scheduling, learner, config, temperature control and heating response.
+- 285 focused unit/integration tests passed across scheduling, learner, config, temperature control, heating response, schedule display and polling.
 - New learner and shared settings contract reached 100% local line, branch and function coverage before final formatting.
 - Build and required-file verification passed.
-- Local dependency installation is blocked by registry network access. Chromium cannot start under the local socket restriction. Remote CI must validate lint, full coverage, package installation, compatibility and browser checks.
+- Remote CI passed lint, full tests and coverage gates, build verification, migration checks and package installation on all six declared Node/Homebridge combinations: 22/1.11.4, 22/2.4.0, 24/1.11.4, 24/2.4.0, 26/2.4.0 and 24/2.5.0.
+- Standalone server CI and both jobs running the complete embedded, standalone and reverse-proxy browser suite passed. Browser coverage includes advanced learning save/reset, Celsius/Fahrenheit differences, invalid-value rejection, thermostat cards collapsed by default, keyboard opening, independent thermostat state, draft summaries, saved expansion, Apple Home borders, and mobile width. All nine applicable implementation jobs passed; the separate visual-publication job is intentionally skipped for this branch.
+- Implementation check runs: https://github.com/pponce/homebridge-nest-climate-cntrl/actions/runs/44481186872 and https://github.com/pponce/homebridge-nest-climate-cntrl/actions/runs/44481186857.
+- Local dependency installation is blocked by registry network access and Chromium cannot start under the local socket restriction; remote CI supplied the full runtime/browser validation.
 - Live Nest/backend/hardware behavior has not been verified. No claim of perfect True Radiant coordination is made; bounded setpoint changes can still influence native predictions.
 
 ## Exact next steps
 
-1. Commit and publish the feature branch against the stated remote base; open a pull request without an npm release.
-2. Run existing CI. Review lint, every coverage gate, Node/Homebridge combinations, package checks, and embedded/standalone browser checks.
-3. Correct failures, rerun relevant checks, and update this checkpoint with the final result.
-4. For later hardware validation, review suggestions before enabling auto-apply, confirm a manual schedule entry is protected, save learning settings in each host, and monitor a radiant heating cycle with bounded compensation.
+1. Review PR #43 and the current checks. This task has not merged it or published a release.
+2. Merge or prepare a versioned GitHub release when requested; ask before publishing to npm.
+3. For hardware validation, review suggestions before enabling auto-apply, confirm a manual schedule entry is protected, save learning settings in each host, and monitor a radiant heating cycle with bounded compensation.
 
 ## Design sources
 

@@ -489,7 +489,7 @@ Each enabled Home presence rule exposes one combined occupancy sensor, named aft
 
 ## Homebridge configuration interface
 
-Homebridge plugin Settings and the standalone dashboard use the same climate application: Overview, Sensors & fans, Climate rules, and Settings. Rule editors, field help, drag ordering, heating recommendations, manual-target policy, Apple Home room-temperature display, runtime status, and live controls are available in both. Standalone web access does not need to be enabled to use the Homebridge interface.
+Homebridge plugin Settings and the standalone dashboard use the same climate application: Overview, Climate rules, Sensors & fans, and Settings. Rule editors, field help, drag ordering, heating recommendations, manual-target policy, Apple Home room-temperature display, runtime status, and live controls are available in both. Standalone web access does not need to be enabled to use the Homebridge interface.
 
 Use **Save changes** for live climate configuration. Restart-required edits enable Homebridge’s bottom **Save** button and display instructions to use it. Settings are validated against the saved revision; a change made elsewhere requires reloading. **Enabled** describes the saved rule permission; **Active**, **Waiting**, and **Paused** describe its current execution.
 
