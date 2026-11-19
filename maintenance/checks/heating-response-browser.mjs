@@ -60,6 +60,10 @@ try {
   await page.getByLabel('Username').fill('admin');
   await page.getByLabel('Password', { exact: true }).fill('fixture-password');
   await page.getByRole('button', { name: /Sign in/ }).click();
+  const thermostatCard = page.locator('#device-settings > .device-setting');
+  await thermostatCard.locator(':scope > summary').waitFor();
+  assert.equal(await thermostatCard.evaluate((node) => node.open), false);
+  await thermostatCard.locator(':scope > summary').click();
   await page.getByRole('heading', { name: 'Heating response & tuning', exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Apply to this rule', exact: true }).count(), 0);
   await page.getByText('How heating-response learning works with Nest', { exact: true }).click();
@@ -87,7 +91,9 @@ try {
   assert.equal(learningSaved.config.devices[0].scheduleLearning.temperatureTolerance, 0.7);
   await page.getByLabel('Minimum observed days', { exact: true }).fill('5');
   await page.getByLabel('Minimum observed days', { exact: true }).fill('1');
+  await thermostatCard.locator(':scope > summary').click();
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  assert.equal(await thermostatCard.evaluate((node) => node.open), true, 'Invalid fields reopen their thermostat for correction');
   assert.equal(await page.getByLabel('Minimum observed days', { exact: true }).evaluate((node) => node.checkValidity()), false);
   assert.equal((await server.config.snapshot()).config.devices[0].scheduleLearning.minimumDays, 4);
   await page.getByRole('button', { name: 'Use default learning settings', exact: true }).click();
@@ -117,6 +123,9 @@ try {
   assert.equal(saved.config.rules.temperature[0].minimumIntervalMinutes, 5);
   assert.equal(saved.restartRequired, false);
   assert.equal(saved.config.devices[0].scheduleTimeZone, 'America/Phoenix');
+  assert.match(await thermostatCard.locator(':scope > summary').innerText(), /In-floor radiant/);
+  assert.match(await thermostatCard.locator(':scope > summary').innerText(), /Response observation: On/);
+  assert.doesNotMatch(await thermostatCard.locator(':scope > summary').innerText(), /Unsaved changes/);
   await timeZone.selectOption('');
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   await page.locator('#save-bar').waitFor({ state: 'hidden' });

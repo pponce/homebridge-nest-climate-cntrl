@@ -221,12 +221,16 @@ try {
   assert.equal(await page.evaluate(() => window.outerSave), false);
   assert.equal(await page.locator('#connection-setup').count(), 0);
   await navigate(page, 'Settings');
+  const thermostatSettings = page.locator('#device-settings > .device-setting').first();
+  assert.equal(await thermostatSettings.evaluate((node) => node.open), false);
+  await thermostatSettings.locator(':scope > summary').click();
   const learningPanel = page.locator('.schedule-learning-settings').first();
   await learningPanel.locator('summary').click();
   await learningPanel.getByLabel('Minimum observed days', { exact: true }).fill('4');
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   await page.locator('#save-bar').waitFor({ state: 'hidden' });
   assert.equal(config.devices.find((device) => device.serialNumber === 'T1').scheduleLearning.minimumDays, 4);
+  assert.equal(await thermostatSettings.evaluate((node) => node.open), true, 'Saving keeps the thermostat open');
   assert.equal(await page.evaluate(() => window.outerSave), false, 'Learning settings use the embedded live-save flow');
   await page.locator('#pause-on-restart').check();
   await page.getByRole('switch', { name: 'Show climate rule temperature in Apple Home', exact: false }).first().check();

@@ -14,7 +14,7 @@ const assets = new Map([
   ['/', ['homebridge-ui/dashboard/index.html', 'text/html']],
   ['/app.js', ['homebridge-ui/dashboard/app.js', 'text/javascript']],
   ['/styles.css', ['homebridge-ui/dashboard/styles.css', 'text/css']],
-  ...['schedule-controls', 'climate-utils', 'time-zone-picker', 'sensor-preview', 'fan-speed', 'fan-curve', 'occupancy-condition', 'rule-window', 'connection-page', 'connection-config'].map((name) =>
+  ...['schedule-controls', 'schedule-learning', 'climate-utils', 'time-zone-picker', 'sensor-preview', 'fan-speed', 'fan-curve', 'occupancy-condition', 'rule-window', 'connection-page', 'connection-config'].map((name) =>
     ['/shared/' + name + '.js', ['homebridge-ui/public/' + name + '.js', 'text/javascript']]),
 ]);
 const rule = { id: 'mixed', name: 'Downstairs comfort', kind: 'temperature', enabled: false,

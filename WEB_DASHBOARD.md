@@ -61,7 +61,7 @@ Hover over, focus or tap the **?** beside **Coming up** for help comparing these
 
 ## Navigate on phones and in Homebridge
 
-Use **☰ Menu** to switch between **Overview**, **Sensors & fans**, **Climate rules**, **Settings** and **Accounts & web access**. In Homebridge Settings and on narrow web screens, navigation starts collapsed so the page can use the available width. The menu opens over the page and closes when you select a destination, click outside, press Escape or move keyboard focus out of it. The current page is highlighted. On the standalone mobile dashboard, the menu also includes **Sign out**.
+Use **☰ Menu** to switch between **Overview**, **Climate rules**, **Sensors & fans**, **Settings** and **Accounts & web access**. In Homebridge Settings and on narrow web screens, navigation starts collapsed so the page can use the available width. The menu opens over the page and closes when you select a destination, click outside, press Escape or move keyboard focus out of it. The current page is highlighted. On the standalone mobile dashboard, the menu also includes **Sign out**.
 
 The standalone dashboard uses a persistent sidebar on wider desktop screens. Resizing the window switches between layouts without discarding unsaved changes.
 
@@ -431,6 +431,8 @@ Choose a manual zone to override automatic detection. Common choices include Pac
 This setting controls how the plugin interprets Nest schedules and groups heating observations into days. It does not change the thermostat's own time-zone setting. If a weekly schedule exists and no usable zone is available, automatic heating control waits for a valid zone. Changing the effective zone pauses an active scheduled hold and starts a new heating observation period. Schedule-only setting changes need no bridge restart.
 
 ## Heating response & tuning
+
+Under **Settings → Thermostat settings**, each thermostat has a separate bordered card that starts collapsed. Its summary shows the heating type, configured temperature-rule count, response observation, Apple Home temperature-display preference and optional Apple Home features. Open the card to see heating guidance, advanced schedule learning and a bordered Apple Home section. Cards open independently and stay open while editing or saving during the current page session. Summaries reflect draft changes and mark unsaved thermostat settings; optional Apple Home accessories still require the indicated restart after saving.
 
 Open **Settings → Thermostat settings → your thermostat → Heating response & tuning**. Choose the heating type and save. Each saved temperature rule for that thermostat has its own starting recommendation, current limits, evidence and **Apply to this rule** button.
 

@@ -6,6 +6,7 @@
 - Preserve existing user schedule entries during automatic application; conflicting suggestions require approval. Show supporting dates and weighted agreement with each suggestion.
 - Explain heating-response recommendations, their update intervals and adjustment limits, and how they coexist with Nest True Radiant, Early-On and Heat Pump Balance.
 - Place Climate rules above Sensors & fans in the desktop and compact navigation.
+- Group each thermostat's settings in a bordered card that starts collapsed, with heating, response-observation and Apple Home summaries. Keep Apple Home controls in their own bordered section and preserve expanded cards while editing and saving.
 
 ## v0.6.12
 

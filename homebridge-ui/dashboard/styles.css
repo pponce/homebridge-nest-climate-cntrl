@@ -273,9 +273,28 @@ input[type="checkbox"] { accent-color: var(--accent); width: 17px; height: 17px;
 .toggle-row input::before { content: ""; position: absolute; width: 14px; height: 14px; border-radius: 50%; top: 2px; left: 2px; background: #fff; box-shadow: 0 1px 3px #0002; transition: transform .15s; }
 .toggle-row input:checked { background: var(--accent); border-color: var(--accent); }
 .toggle-row input:checked::before { transform: translateX(14px); }
-.device-setting { border-top: 1px solid var(--line); padding: 22px 0 5px; }
-.device-setting h3 { margin-bottom: 10px; }
-.device-setting > label:not(.toggle-row) { margin: 14px 0 17px; max-width: 300px; }
+.device-setting { margin-top: 18px; border: 1px solid var(--accent); border-radius: 16px; color: var(--text); background: var(--surface); }
+.device-setting > summary { padding: 20px; list-style: none; border-radius: 15px; background: var(--accent-wash); }
+.device-setting > summary::-webkit-details-marker { display: none; }
+.device-setting[open] > summary { border-bottom: 1px solid var(--line); border-radius: 15px 15px 0 0; }
+.device-settings-heading { display: flex; align-items: center; gap: 10px; }
+.device-settings-heading > span:first-child { display: flex; color: var(--accent-deep); }
+.device-settings-heading h3 { margin: 0; font-size: 17px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.device-settings-expand { display: flex; align-items: center; gap: 7px; color: var(--accent-deep); font-size: 11px; }
+.device-settings-expand > span:last-child { display: flex; }
+.device-setting[open] .device-settings-expand > span:last-child { transform: rotate(180deg); }
+.device-settings-overview, .device-settings-extras { margin: 9px 0 0; font-size: 12px; font-weight: 450; color: var(--muted); overflow-wrap: anywhere; }
+.device-settings-badges { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.device-settings-badges .status-pill { white-space: normal; }
+.device-settings-body { padding: 18px; display: grid; gap: 16px; }
+.device-settings-body > .heating-settings, .apple-home-settings { margin: 0; padding: 20px; border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+.apple-home-settings h4:first-child { margin-top: 0; }
+.apple-home-settings > label:not(.toggle-row) { margin: 14px 0 0; max-width: 300px; }
+@media (max-width: 560px) {
+  .device-setting > summary { padding: 16px; }
+  .device-settings-body { padding: 10px; gap: 12px; }
+  .device-settings-body > .heating-settings, .apple-home-settings { padding: 14px; }
+}
 #page-settings > .panel { margin-bottom: 22px; }
 .account-row { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 15px 0; border-top: 1px solid var(--line); }
 .account-row strong { font-size: 12px; font-weight: 600; }

@@ -322,6 +322,7 @@ function markDirty() {
     nativeDraftTimer = setTimeout(stageNativeClimate, 150);
   }
   renderHeatingRecommendations();
+  renderDeviceSettingsSummaries();
   renderRestart();
   document.querySelectorAll('.sensor-setup button').forEach((control) => { control.disabled = true; });
 }
@@ -1297,6 +1298,28 @@ function toggle(host, title, description, value, change, help) {
 let heatingRequest;
 const timeZonePickers = new Map();
 const learningSettingsOpen = new Set();
+const deviceSettingsOpen = new Set();
+function renderDeviceSettingsSummaries() {
+  for (const card of document.querySelectorAll('#device-settings > .device-setting')) {
+    const device = thermostats().find((entry) => entry.serial === card.dataset.thermostat);
+    if (!device) continue;
+    const options = deviceOptions(device.serial);
+    const heatingType = { forcedAir: 'Forced air', radiators: 'Radiators', radiantFloor: 'In-floor radiant' }[options.heatingType] || 'Heating type not set';
+    const count = (state.config.rules?.temperature || []).filter((rule) => rule.thermostatId === device.serial).length;
+    card.querySelector('.device-settings-overview').textContent = heatingType + ' · ' + count + ' temperature rule' + (count === 1 ? '' : 's');
+    const badges = card.querySelector('.device-settings-badges');
+    badges.replaceChildren(pill('Response observation: ' + (options.heatingResponseEnabled ? 'On' : 'Off'), options.heatingResponseEnabled ? 'good' : 'neutral'),
+      pill('Home display: ' + (options.homeKitRoomTemperature ? 'Room rule when active' : 'Nest'), 'neutral'));
+    const saved = state.envelope?.config?.devices?.find((entry) => entry.serialNumber === device.serial) || {};
+    if (JSON.stringify(options) !== JSON.stringify(saved)) badges.append(pill('Unsaved changes', 'warn'));
+    const extras = [
+      (options.ecoSwitch ?? device.data.ecoSwitch) && 'Eco switch',
+      (options.humiditySensor ?? device.data.humiditySensor) && 'Humidity sensor',
+      device.data.has_fan && (options.fanPresetSwitches ?? device.data.fanPresetSwitches) && 'Fan presets',
+    ].filter(Boolean);
+    card.querySelector('.device-settings-extras').textContent = 'Apple Home extras: ' + (extras.join(' · ') || 'None enabled');
+  }
+}
 async function refreshHeating() {
   if (!state.session?.authenticated || !state.config || state.restarting) return;
   if (heatingRequest) return heatingRequest;
@@ -1438,26 +1461,45 @@ function renderSettings() {
   $('pause-on-restart').checked = state.config.options?.pauseOnRestart === true;
   $('dashboard-name').value = state.config.name || 'Nest Climate Cntrl'; $('eve-history').checked = state.config.options?.eveHistory !== false;
   $('dashboard-url').textContent = state.envelope.web?.url || location.origin;
+  for (const card of document.querySelectorAll('#device-settings > .device-setting')) {
+    if (card.open) deviceSettingsOpen.add(card.dataset.thermostat); else deviceSettingsOpen.delete(card.dataset.thermostat);
+  }
   $('device-settings').replaceChildren();
   timeZonePickers.clear();
   for (const device of thermostats()) {
-    const options = deviceOptions(device.serial); const group = el('div', undefined, 'device-setting'); group.append(el('h3', device.data.description || 'Thermostat'));
+    const options = deviceOptions(device.serial); const card = el('details', undefined, 'device-setting');
+    card.dataset.thermostat = device.serial;
+    card.open = deviceSettingsOpen.has(device.serial);
+    card.addEventListener('toggle', () => {
+      if (!card.isConnected) return;
+      if (card.open) deviceSettingsOpen.add(device.serial); else deviceSettingsOpen.delete(device.serial);
+    });
+    const summary = el('summary', undefined, 'device-settings-summary');
+    const heading = el('div', undefined, 'device-settings-heading');
+    const name = el('h3', device.data.description || 'Thermostat');
+    const expand = el('span', undefined, 'device-settings-expand'); expand.setAttribute('aria-hidden', 'true');
+    expand.append(el('span', 'Settings'), icon('down'));
+    heading.append(icon('thermometer'), name, expand);
+    summary.append(heading, el('p', undefined, 'device-settings-overview'), el('div', undefined, 'device-settings-badges'), el('p', undefined, 'device-settings-extras'));
+    const group = el('div', undefined, 'device-settings-body');
     renderHeatingSettings(group, device, options);
     renderLearningSettings(group, device, options);
-    group.append(el('h4', 'Apple Home temperature display'));
-    toggle(group, 'Show climate rule temperature in Apple Home', 'Off by default. While a Follow-mode rule controls this thermostat, show its selected-sensor temperature and room target. Apple Home changes set that room target directly. Fixed rules, paused rules and unavailable rules show Nest’s actual readings and target. A direct Apple Home target change pauses a fixed rule. Save to apply.', options.homeKitRoomTemperature === true, (value) => { deviceOptions(device.serial, true).homeKitRoomTemperature = value; });
-    group.append(el('h4', 'Apple Home features · restart to apply'));
-    toggle(group, 'Eco switch', 'A dedicated Eco control in Apple Home.', options.ecoSwitch ?? device.data.ecoSwitch, (value) => { deviceOptions(device.serial, true).ecoSwitch = value; });
-    toggle(group, 'Separate humidity sensor', 'Show humidity as its own Apple Home sensor.', options.humiditySensor ?? device.data.humiditySensor, (value) => { deviceOptions(device.serial, true).humiditySensor = value; });
+    const apple = el('section', undefined, 'apple-home-settings');
+    apple.append(el('h4', 'Apple Home temperature display'));
+    toggle(apple, 'Show climate rule temperature in Apple Home', 'Off by default. While a Follow-mode rule controls this thermostat, show its selected-sensor temperature and room target. Apple Home changes set that room target directly. Fixed rules, paused rules and unavailable rules show Nest’s actual readings and target. A direct Apple Home target change pauses a fixed rule. Save to apply.', options.homeKitRoomTemperature === true, (value) => { deviceOptions(device.serial, true).homeKitRoomTemperature = value; });
+    apple.append(el('h4', 'Apple Home features · restart to apply'));
+    toggle(apple, 'Eco switch', 'A dedicated Eco control in Apple Home.', options.ecoSwitch ?? device.data.ecoSwitch, (value) => { deviceOptions(device.serial, true).ecoSwitch = value; });
+    toggle(apple, 'Separate humidity sensor', 'Show humidity as its own Apple Home sensor.', options.humiditySensor ?? device.data.humiditySensor, (value) => { deviceOptions(device.serial, true).humiditySensor = value; });
     if (device.data.has_fan) {
-      toggle(group, 'HVAC fan preset switches', 'Optional 15, 30 and 60 minute switches. Off by default.', options.fanPresetSwitches ?? device.data.fanPresetSwitches, (value) => { deviceOptions(device.serial, true).fanPresetSwitches = value; });
+      toggle(apple, 'HVAC fan preset switches', 'Optional 15, 30 and 60 minute switches. Off by default.', options.fanPresetSwitches ?? device.data.fanPresetSwitches, (value) => { deviceOptions(device.serial, true).fanPresetSwitches = value; });
       const durations = [['', 'Use Nest duration'], ...[15, 30, 45, 60, 120, 240, 480, 720, 1440, 4320, 7200, 10080].map((minutes) => [minutes + 'm', minutes + ' minutes'])];
       if (options.fanDuration && !durations.some(([value]) => value === options.fanDuration)) durations.push([options.fanDuration, 'Current setting (' + options.fanDuration + ')']);
-      inputField(group, 'Default HVAC fan duration', options.fanDuration || '', (value) => { const options = deviceOptions(device.serial, true); if (value) options.fanDuration = value; else delete options.fanDuration; }, { choices: durations });
+      inputField(apple, 'Default HVAC fan duration', options.fanDuration || '', (value) => { const options = deviceOptions(device.serial, true); if (value) options.fanDuration = value; else delete options.fanDuration; }, { choices: durations });
     }
-    $('device-settings').append(group);
+    group.append(apple); card.append(summary, group); $('device-settings').append(card);
   }
   if (!thermostats().length) $('device-settings').append(el('p', 'Device options appear when your thermostats connect.', 'small-note'));
+  renderDeviceSettingsSummaries();
   renderAccounts();
   refreshHeating();
 }
@@ -2198,7 +2240,10 @@ function renderRulePreview() {
 async function save() {
   if (!state.dirty || state.saving || !state.config || !state.envelope) return;
   const invalid = [...document.querySelectorAll('#page-settings input, #rule-editor input, .fan-mapping input')].find((input) => !input.checkValidity());
-  if (invalid) { invalid.reportValidity(); return; }
+  if (invalid) {
+    for (let node = invalid.parentElement; node; node = node.parentElement) if (node.tagName === 'DETAILS') node.open = true;
+    invalid.reportValidity(); return;
+  }
   const mappingError = fanMappingsError(state.config.fanMappings || []);
   if (mappingError) { notice(mappingError, 'danger'); return; }
   const occupancyError = [...state.config.rules.temperature, ...state.config.rules.fans].map((rule) => occupancyConditionError(rule.occupancyCondition, rule.kind)).find(Boolean);
