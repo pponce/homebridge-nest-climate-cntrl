@@ -1327,7 +1327,7 @@ function renderLearningSettings(group, device, options) {
   const grid = el('div', undefined, 'form-grid');
   inputField(grid, 'Learn patterns for', settings.dayGrouping, (value) => change('dayGrouping', value), {
     choices: [['sameWeekday', 'Each weekday separately'], ['weekdayWeekend', 'Weekdays together / weekends together'], ['daily', 'Every day together']],
-    help: 'Separate weekdays need repeated examples of the same weekday. Grouped choices can qualify on different dates and propose the same routine for every day in that group, including days without an observation.',
+    help: () => 'Separate weekdays need repeated examples of the same weekday. Grouped choices can qualify on different dates and propose the same routine for every day in that group, including days without an observation.',
   });
   for (const [key, field] of Object.entries(LEARNING_FIELDS)) {
     const difference = key === 'temperatureTolerance';
@@ -1335,7 +1335,7 @@ function renderLearningSettings(group, device, options) {
     const title = field.title + (difference ? ' (°' + temperatureUnit() + ')' : '');
     const input = inputField(grid, title, convert(settings[key]), (value) => change(key,
       difference ? Math.round(celsiusTemperature(value, temperatureUnit(), true) * 10) / 10 : value),
-    { type: 'number', min: convert(field.min), max: convert(field.max), step: convert(field.step), help: field.help });
+    { type: 'number', min: convert(field.min), max: convert(field.max), step: convert(field.step), help: () => field.help });
     input.required = true;
   }
   details.append(grid);

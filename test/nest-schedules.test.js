@@ -589,7 +589,9 @@ test('existing user entries require approval and learned ownership survives conf
 test('a learned routine can move in time without leaving its previous entry behind', async (t) => {
   const f = await fixture(t);
   learnedChoices(f);
-  f.manager.record('test').events.forEach((event) => { event.at += 20 * 60000; });
+  f.manager.record('test').events.forEach((event) => {
+    event.at += 20 * 60000;
+  });
   f.data.native_schedules.autoSchedule = false;
   await enableAutomaticLearning(f);
   assert.deepEqual(f.calls[0][1].temperature_schedules.heat, [{ ...row, time: row.time + 1800, heat: 22 }]);

@@ -397,7 +397,8 @@ export class NestSchedules {
     model.autoApplyStatus = !model.autoApply ? 'off' : model.learningPaused ? 'paused' :
       this.loadError || model.learningError || record.autoApplyError || record.pending?.failure ? 'attention' : blocked ? 'waiting' : 'on';
     model.autoApplyMessage = blocked ||
-      'On. Qualifying heating suggestions are saved to Nest automatically. Entries that conflict with an existing user schedule require approval.';
+      'On. Qualifying heating suggestions are saved to Nest automatically. ' +
+      'Entries that conflict with an existing user schedule require approval.';
     return model;
   }
 

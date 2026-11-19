@@ -137,7 +137,7 @@ const server = http.createServer(async (request, response) => {
     return;
   }
   let file; let name;
-  if (route.startsWith('/shared/') && ['schedule-controls.js', 'climate-utils.js', 'time-zone-picker.js', 'sensor-preview.js', 'fan-speed.js', 'fan-curve.js', 'occupancy-condition.js', 'rule-window.js', 'connection-page.js', 'connection-config.js'].includes(route.slice(8))) { name = route.slice(8); file = path.join(publicRoot, name); }
+  if (route.startsWith('/shared/') && ['schedule-controls.js', 'schedule-learning.js', 'climate-utils.js', 'time-zone-picker.js', 'sensor-preview.js', 'fan-speed.js', 'fan-curve.js', 'occupancy-condition.js', 'rule-window.js', 'connection-page.js', 'connection-config.js'].includes(route.slice(8))) { name = route.slice(8); file = path.join(publicRoot, name); }
   else { name = route === '/' ? 'index.html' : route.slice(1); if (!assets.has(name)) { response.writeHead(404).end(); return; } file = path.join(staticRoot, name); }
   response.setHeader('Content-Type', name.endsWith('.png') ? 'image/png' : name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css' : name.endsWith('.webmanifest') ? 'application/manifest+json' : 'text/html; charset=utf-8');
   response.end(await fs.readFile(file));
@@ -221,6 +221,13 @@ try {
   assert.equal(await page.evaluate(() => window.outerSave), false);
   assert.equal(await page.locator('#connection-setup').count(), 0);
   await navigate(page, 'Settings');
+  const learningPanel = page.locator('.schedule-learning-settings').first();
+  await learningPanel.locator('summary').click();
+  await learningPanel.getByLabel('Minimum observed days', { exact: true }).fill('4');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await page.locator('#save-bar').waitFor({ state: 'hidden' });
+  assert.equal(config.devices.find((device) => device.serialNumber === 'T1').scheduleLearning.minimumDays, 4);
+  assert.equal(await page.evaluate(() => window.outerSave), false, 'Learning settings use the embedded live-save flow');
   await page.locator('#pause-on-restart').check();
   await page.getByRole('switch', { name: 'Show climate rule temperature in Apple Home', exact: false }).first().check();
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
