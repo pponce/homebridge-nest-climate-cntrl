@@ -26,6 +26,7 @@ const assets = new Map([
   ['/apple-touch-icon.png', ['dashboard/apple-touch-icon.png', 'image/png']],
   ['/icon-192.png', ['dashboard/icon-192.png', 'image/png']],
   ['/icon-512.png', ['dashboard/icon-512.png', 'image/png']],
+  ['/shared/schedule-learning.js', ['public/schedule-learning.js', 'text/javascript; charset=utf-8']],
   ['/shared/schedule-controls.js', ['public/schedule-controls.js', 'text/javascript; charset=utf-8']],
   ['/shared/climate-utils.js', ['public/climate-utils.js', 'text/javascript; charset=utf-8']],
   ['/shared/time-zone-picker.js', ['public/time-zone-picker.js', 'text/javascript; charset=utf-8']],

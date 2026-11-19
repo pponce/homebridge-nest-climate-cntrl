@@ -2,6 +2,9 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { learningSuggestions } from './schedule-learning.js';
+import { learningSettings, learningSettingsError } from '../homebridge-ui/public/schedule-learning.js';
+export { learningSuggestions } from './schedule-learning.js';
 import {
   scheduleTimeZone,
 } from '../homebridge-ui/public/climate-utils.js';
@@ -193,84 +196,6 @@ export function schedulesMatch(actual, requested) {
 }
 const hash = (data) => crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex');
 
-function localTime(at, zone) {
-  try {
-    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
-      timeZone: zone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      weekday: 'long',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    })
-      .formatToParts(at).map((p) => [p.type, p.value]));
-    return {
-      date: parts.year + '-' + parts.month + '-' + parts.day,
-      day: SCHEDULE_DAYS.indexOf(parts.weekday.toUpperCase()),
-      minute: Number(parts.hour) * 60 + Number(parts.minute),
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function learningSuggestions(events, zone, now = Date.now()) {
-  if (!zone) {
-    return [];
-  }
-
-  const buckets = new Map();
-  for (const event of events ?? []) {
-    if (!temperature(event.value) || !Number.isFinite(event.at) || event.at > now || now - event.at > 42 * 86400000 ||
-      event.zone !== zone || !['room', 'manual'].includes(event.source)) {
-      continue;
-    }
-    const local = localTime(event.at, zone);
-    if (!local) {
-      continue;
-    }
-    // One observation per date in a 30-minute slot; the latest intentional choice wins.
-    const time = Math.floor(local.minute / 30) * 1800;
-    const key = local.day + '/' + time;
-    if (!buckets.has(key)) {
-      buckets.set(key, new Map());
-    }
-    const dates = buckets.get(key);
-    if (!dates.has(local.date) || dates.get(local.date).at < event.at) {
-      dates.set(local.date, {
-        ...event,
-        day: local.day,
-        time,
-      });
-    }
-  }
-
-  return [...buckets.entries()].flatMap(([key, dates]) => {
-    const points = [...dates.values()];
-    if (points.length < 3) {
-      return [];
-    }
-    const values = points.map((e) => e.value).sort((a, b) => a - b);
-    if (values.at(-1) - values[0] > 0.6) {
-      return [];
-    }
-    const value = Math.round(values[Math.floor(values.length / 2)] * 10) / 10;
-    const row = {
-      day: points[0].day,
-      time: points[0].time,
-      heat: value,
-    };
-    return [{
-      id: hash([zone, key, row, points.map((e) => e.at)]),
-      ...row,
-      observations: points.length,
-      latestAt: Math.max(...points.map((e) => e.at)),
-    }];
-  }).sort((a, b) => a.day - b.day || a.time - b.time);
-}
-
 export class NestSchedules {
   constructor(dashboard, now = () => Date.now()) {
     this.dashboard = dashboard;
@@ -307,6 +232,12 @@ export class NestSchedules {
             (record.pending.action === 'schedule' && (!record.pending.modes ||
               !Object.keys(record.pending.modes).length))))) {
           throw new Error('Invalid schedule preferences');
+        }
+        if (record.learnedEntries !== undefined) {
+          validateEntries('heat', record.learnedEntries);
+        }
+        if (record.pending?.learnedEntries !== undefined) {
+          validateEntries('heat', record.pending.learnedEntries);
         }
         if (record.pending?.action === 'schedule') {
           for (const [mode, entries] of Object.entries(record.pending.modes)) {
@@ -356,6 +287,25 @@ export class NestSchedules {
     return scheduleTimeZone(option ?? {}, device?.data ?? {});
   }
 
+  learningOptions(serial) {
+    return this.dashboard.automation?.deviceOptions?.find((d) => d.serialNumber.toUpperCase() === serial.toUpperCase())?.scheduleLearning;
+  }
+
+  learnedPlan(serial, suggestion, model) {
+    const tolerance = learningSettings(this.learningOptions(serial)).timeToleranceMinutes * 60;
+    const owned = this.record(serial).learnedEntries ?? [];
+    const isOwned = (entry) => owned.some((prior) => schedulesMatch([entry], [prior]));
+    const nearby = model.modes.heat.filter((entry) => entry.day === suggestion.day && Math.abs(entry.time - suggestion.time) <= tolerance);
+    const replacement = nearby.filter(isOwned).sort((a, b) => Math.abs(a.time - suggestion.time) - Math.abs(b.time - suggestion.time))[0];
+    const manual = nearby.some((entry) => !isOwned(entry));
+    const row = { day: suggestion.day, time: suggestion.time, heat: suggestion.heat };
+    const heat = validateEntries('heat', [...model.modes.heat.filter((entry) => entry !== replacement &&
+      (entry.day !== row.day || entry.time !== row.time)), row]);
+    return { heat, requiresApproval: manual && !schedulesMatch(model.modes.heat, heat),
+      learnedEntries: validateEntries('heat', [...owned.filter((entry) => heat.some((current) => schedulesMatch([current], [entry])))
+        .filter((entry) => entry.day !== row.day || entry.time !== row.time), row]) };
+  }
+
   connected(serial) {
     const device = this.dashboard.devices.get(serial);
     return device?.type === 'Thermostat' && !!device.id && !device.needsUpdate && device.data.online === true &&
@@ -393,6 +343,9 @@ export class NestSchedules {
           schedulesMatch(native.modes[mode], entries));
       if (matched) {
         record.message = 'Confirmed by Nest.';
+        if (pending.learnedEntries) {
+          record.learnedEntries = pending.learnedEntries;
+        }
         if (pending.autoApply) {
           delete record.autoApplyError;
         }
@@ -417,23 +370,34 @@ export class NestSchedules {
       allowNestLearning: record.allowNestLearning === true,
       learning: record.learning !== false,
       autoApply: record.autoApply === true,
-      suggestions: learningSuggestions(record.events, this.zone(serial), this.now()).filter((s) => !record.dismissed?.includes(s
-        .id)),
+      learningSettings: learningSettings(this.learningOptions(serial)),
+      learningError: learningSettingsError(this.learningOptions(serial)),
+      suggestions: learningSuggestions(record.events, this.zone(serial), this.now(), this.learningOptions(serial))
+        .filter((s) => !record.dismissed?.includes(s.id)),
       pending: record.pending ?? null,
       lastResponse: record.lastResponse ?? null,
       message: this.loadError || record.message || '',
       busy: this.busy.has(serial),
       temperatureRule: this.dashboard.automation?.temperaturePolicy?.(serial) ?? null,
     };
+    if (Array.isArray(model.modes.heat)) {
+      model.suggestions = model.suggestions.map((suggestion) => {
+        try {
+          return { ...suggestion, requiresApproval: this.learnedPlan(serial, suggestion, model).requiresApproval };
+        } catch {
+          return { ...suggestion, requiresApproval: true };
+        }
+      });
+    }
     model.learningPaused = model.temperatureRule?.targetMode === 'fixed';
     model.learningMessage = model.learningPaused ?
       'Paused by fixed-temperature rule “' + model.temperatureRule.name + '”. ' +
       'Learning and automatic application resume with your saved preferences when this rule is no longer selected.' : '';
     const blocked = this.autoApplyBlock(serial, model);
     model.autoApplyStatus = !model.autoApply ? 'off' : model.learningPaused ? 'paused' :
-      this.loadError || record.autoApplyError || record.pending?.failure ? 'attention' : blocked ? 'waiting' : 'on';
+      this.loadError || model.learningError || record.autoApplyError || record.pending?.failure ? 'attention' : blocked ? 'waiting' : 'on';
     model.autoApplyMessage = blocked ||
-      'On. Qualifying heating suggestions are saved to Nest automatically.';
+      'On. Qualifying heating suggestions are saved to Nest automatically. Entries that conflict with an existing user schedule require approval.';
     return model;
   }
 
@@ -445,8 +409,8 @@ export class NestSchedules {
     if (!model.autoApply) {
       return 'Off. Review and approve each suggestion before it is saved to Nest.';
     }
-    if (this.loadError || record.autoApplyError) {
-      return this.loadError || record.autoApplyError;
+    if (this.loadError || record.autoApplyError || model.learningError) {
+      return this.loadError || record.autoApplyError || model.learningError;
     }
     if (!model.learning || this.stopped) {
       return 'Automatic application is paused.';
@@ -495,7 +459,7 @@ export class NestSchedules {
         if (this.autoApplyBlock(serial, model)) {
           continue;
         }
-        const suggestion = model.suggestions.find((s) => s.latestAt >
+        const suggestion = model.suggestions.find((s) => !s.requiresApproval && s.latestAt >
           (record.autoHandled?.[hash([model.zone, s.day, s.time])] ?? 0));
         if (!suggestion) {
           continue;
@@ -520,10 +484,10 @@ export class NestSchedules {
     }
     const record = this.record(serial);
     const zone = this.zone(serial);
-    if (record.learning === false || !zone) {
+    if (record.learning === false || !zone || learningSettingsError(this.learningOptions(serial))) {
       return;
     }
-    record.events = (record.events ?? []).filter((e) => e.at <= this.now() && this.now() - e.at < 42 * 86400000).slice(-499);
+    record.events = (record.events ?? []).filter((e) => e.at <= this.now() && this.now() - e.at < 90 * 86400000).slice(-499);
     record.events.push({
       at: this.now(),
       value,
@@ -681,6 +645,7 @@ export class NestSchedules {
     }
     let values;
     let pending;
+    let learnedEntries;
     if (action === 'auto') {
       if (typeof payload.value !== 'boolean' || model.autoSchedule === null) {
         throw new Error('Auto-Schedule control is unavailable.');
@@ -709,21 +674,19 @@ export class NestSchedules {
         if (!suggestion || !Array.isArray(model.modes.heat)) {
           throw new Error('This suggestion or Nest heating schedule is unavailable.');
         }
-        modes = {
-          heat: validateEntries('heat', [...model.modes.heat.filter((e) => e.day !== suggestion.day || e.time !== suggestion
-            .time), {
-            day: suggestion.day,
-            time: suggestion.time,
-            heat: suggestion.heat,
-          }]),
-        };
+        const plan = this.learnedPlan(serial, suggestion, model);
+        if (action === 'apply' && plan.requiresApproval) {
+          throw new Error('This suggestion overlaps an existing user schedule. Review and approve it manually.');
+        }
+        modes = { heat: plan.heat };
+        learnedEntries = plan.learnedEntries;
         if (action === 'apply') {
           const key = hash([model.zone, suggestion.day, suggestion.time]);
           if (suggestion.latestAt <= (record.autoHandled?.[key] ?? 0)) {
             throw new Error('This learning was already attempted. Review and approve it manually if needed.');
           }
           record.autoHandled = Object.fromEntries(Object.entries(record.autoHandled ?? {}).filter(([, at]) =>
-            this.now() - at < 42 * 86400000));
+            this.now() - at < 90 * 86400000));
           record.autoHandled[key] = suggestion.latestAt;
           if (schedulesMatch(model.modes.heat, modes.heat)) {
             record.dismissed = [...(record.dismissed ?? []), suggestion.id].slice(-200);
@@ -748,8 +711,12 @@ export class NestSchedules {
       values = {
         temperature_schedules: modes,
       };
+      if (action === 'clear' || action === 'save' && payload.mode === 'heat') {
+        learnedEntries = [];
+      }
       pending = {
         action: 'schedule',
+        ...(learnedEntries ? { learnedEntries } : {}),
         modes,
         at: this.now(),
         ...(action === 'apply' ? { autoApply: true } : {}),
@@ -758,6 +725,7 @@ export class NestSchedules {
         } : {}),
       };
     }
+    const learningRevision = hash(this.learningOptions(serial) ?? {});
     this.busy.add(serial);
     try {
       // Persist intent before sending; a restart must not repeat an uncertain destructive operation.
@@ -775,6 +743,7 @@ export class NestSchedules {
       const guard = () => this.connected(serial) && (scopedSchedule ?
         hash([payload.mode, this.native(serial).modes[payload.mode]]) === payload.scheduleRevision :
         hash(this.native(serial)) === expected) &&
+        (!['approve', 'apply'].includes(action) || hash(this.learningOptions(serial) ?? {}) === learningRevision) &&
         (!(action === 'approve' || action === 'apply' || action === 'auto' && payload.value) || !this.fixedRule(serial)) &&
         ((!automaticPolicy && action !== 'apply') ||
           (!this.stopped && record.autoApply === true && record.learning !== false && !record.autoApplyError &&

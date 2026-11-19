@@ -1,3 +1,4 @@
+import { LEARNING_DEFAULTS, LEARNING_FIELDS, learningSettings, learningSettingsError } from '/shared/schedule-learning.js';
 import { renderScheduleControls } from '/shared/schedule-controls.js';
 import { occupancyConditionError, occupancyConditionStatus } from '/shared/occupancy-condition.js';
 import { windowDays, windowError, windowSummary, ruleWindow, ruleTimeZone, rulesInTimeZone } from '/shared/rule-window.js';
@@ -1295,6 +1296,7 @@ function toggle(host, title, description, value, change, help) {
 }
 let heatingRequest;
 const timeZonePickers = new Map();
+const learningSettingsOpen = new Set();
 async function refreshHeating() {
   if (!state.session?.authenticated || !state.config || state.restarting) return;
   if (heatingRequest) return heatingRequest;
@@ -1309,6 +1311,43 @@ async function refreshHeating() {
 function formatDifference(value) {
   return Number.isFinite(value) ? displayTemperature(value, temperatureUnit(), true).toFixed(2).replace(/0$/, '') + '°' + temperatureUnit() : '—';
 }
+function renderLearningSettings(group, device, options) {
+  const details = el('details', undefined, 'heating-settings schedule-learning-settings');
+  details.open = learningSettingsOpen.has(device.serial);
+  details.addEventListener('toggle', () => { if (details.open) learningSettingsOpen.add(device.serial); else learningSettingsOpen.delete(device.serial); });
+  details.append(el('summary', 'Schedule learning · advanced settings'));
+  details.append(el('p', 'Learn when you prefer particular room temperatures from intentional choices in this dashboard and supported Apple Home room controls. This learns heating schedules; it does not predict warm-up or control boiler timing.', 'small-note'));
+  const error = learningSettingsError(options.scheduleLearning);
+  if (error) details.append(el('p', error + ' Learning is paused until these settings are corrected and saved.', 'callout warning'));
+  const settings = learningSettings(options.scheduleLearning);
+  const change = (key, value) => {
+    const option = deviceOptions(device.serial, true);
+    option.scheduleLearning = { ...learningSettings(option.scheduleLearning), [key]: value };
+  };
+  const grid = el('div', undefined, 'form-grid');
+  inputField(grid, 'Learn patterns for', settings.dayGrouping, (value) => change('dayGrouping', value), {
+    choices: [['sameWeekday', 'Each weekday separately'], ['weekdayWeekend', 'Weekdays together / weekends together'], ['daily', 'Every day together']],
+    help: 'Separate weekdays need repeated examples of the same weekday. Grouped choices can qualify on different dates and propose the same routine for every day in that group, including days without an observation.',
+  });
+  for (const [key, field] of Object.entries(LEARNING_FIELDS)) {
+    const difference = key === 'temperatureTolerance';
+    const convert = (value) => difference ? Number(displayTemperature(value, temperatureUnit(), true).toFixed(2)) : value;
+    const title = field.title + (difference ? ' (°' + temperatureUnit() + ')' : '');
+    const input = inputField(grid, title, convert(settings[key]), (value) => change(key,
+      difference ? Math.round(celsiusTemperature(value, temperatureUnit(), true) * 10) / 10 : value),
+    { type: 'number', min: convert(field.min), max: convert(field.max), step: convert(field.step), help: field.help });
+    input.required = true;
+  }
+  details.append(grid);
+  const reset = button('Use default learning settings', () => {
+    deviceOptions(device.serial, true).scheduleLearning = { ...LEARNING_DEFAULTS };
+    learningSettingsOpen.add(device.serial); markDirty(); renderSettings();
+  });
+  details.append(reset, el('p', 'Save changes to apply without restarting. Suggestions are recalculated from retained history. If automatic application is on, newly qualifying entries can be saved to Nest. Existing user entries need approval before a conflicting suggestion can replace them.', 'small-note'));
+  details.append(el('p', 'Only intentional temperature choices train this learner. Scheduled targets, plugin compensation and Eco changes are excluded. Leaving a temperature unchanged is not treated as approval. Turn learning and automatic application on or off in the thermostat’s Temperature schedule controls.', 'small-note'));
+  group.append(details);
+}
+
 function renderHeatingSettings(group, device, options) {
   const section = el('section', undefined, 'heating-settings');
   section.append(el('h4', 'Heating response & tuning'), el('p', 'Choose your heating system, then review guidance for each temperature rule. Suggestions only change a rule when you apply them.', 'small-note'));
@@ -1320,6 +1359,14 @@ function renderHeatingSettings(group, device, options) {
   toggle(section, 'Observe heating response locally', 'Collects while this dashboard is closed, including disabled rules. Keeps readings for up to 48 hours and cycle summaries for 30 days. Turning this off clears this thermostat’s response history.', options.heatingResponseEnabled,
     (value) => { deviceOptions(device.serial, true).heatingResponseEnabled = value; });
   section.append(el('p', 'Save these settings to start observation. Changing the selected sensors, desired room temperature or heating type starts a new observation period. Collection never changes rule settings.', 'small-note'));
+  const explanation = el('details', undefined, 'heating-learning-help');
+  explanation.append(el('summary', 'How heating-response learning works with Nest'));
+  explanation.append(el('p', 'Heating-response learning observes your selected room sensors, Nest’s temperature and target, and whether heating is running. It measures how long rooms take to respond, how quickly they warm, and how much they continue warming after heating stops.', 'small-note'));
+  explanation.append(el('p', 'It recommends two settings for the plugin’s room-temperature rule: the minimum interval between changes to Nest’s target, and the maximum adjustment above or below your desired room temperature. It only changes these settings when you choose Apply to this rule. Observation does not enable a rule or change your schedule.', 'small-note'));
+  explanation.append(el('p', 'Nest True Radiant learns when to start radiant heating and when to stop early so stored heat can carry the room to its target. Early-On performs advance heating or cooling for compatible other systems. Heat Pump Balance manages preheating and auxiliary heat where supported. These Nest features remain responsible for their equipment timing; the plugin does not provide a second predictive preheating or early-shutoff controller.', 'small-note'));
+  explanation.append(el('p', 'You can keep the appropriate Nest feature enabled. A room rule changes the target Nest works toward, so frequent or large adjustments can work against its predictions. The interval and adjustment limit bound those changes; they do not set how often the equipment cycles. Begin conservatively and review comfort and overshoot. The recommendations are local heuristics, not Nest’s thermal model or guaranteed optimal settings.', 'small-note'));
+  explanation.append(el('p', 'Schedule learning is separate: it learns the temperatures and times you prefer. Nest Auto-Schedule is turned off by default while a plugin room rule runs, and automatic application of plugin schedule learning also requires it off. This does not turn off True Radiant or Early-On. Without a room-compensation rule, the plugin’s interval and adjustment limit do not apply.', 'small-note'));
+  section.append(explanation);
   const recommendations = el('div', undefined, 'heating-recommendations'); recommendations.dataset.thermostat = device.serial;
   section.append(recommendations); group.append(section);
 }
@@ -1396,6 +1443,7 @@ function renderSettings() {
   for (const device of thermostats()) {
     const options = deviceOptions(device.serial); const group = el('div', undefined, 'device-setting'); group.append(el('h3', device.data.description || 'Thermostat'));
     renderHeatingSettings(group, device, options);
+    renderLearningSettings(group, device, options);
     group.append(el('h4', 'Apple Home temperature display'));
     toggle(group, 'Show climate rule temperature in Apple Home', 'Off by default. While a Follow-mode rule controls this thermostat, show its selected-sensor temperature and room target. Apple Home changes set that room target directly. Fixed rules, paused rules and unavailable rules show Nest’s actual readings and target. A direct Apple Home target change pauses a fixed rule. Save to apply.', options.homeKitRoomTemperature === true, (value) => { deviceOptions(device.serial, true).homeKitRoomTemperature = value; });
     group.append(el('h4', 'Apple Home features · restart to apply'));

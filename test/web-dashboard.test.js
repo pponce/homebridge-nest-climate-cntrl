@@ -380,6 +380,28 @@ test('schedule time zone changes apply to the rule engine without requiring a br
   );
 });
 
+test('schedule-learning settings validate, persist, stage and reset without restarting', async (t) => {
+  const state = await fixture(t);
+  const store = new WebDashboardConfig(state.configPath, state.block);
+  const initial = await store.snapshot();
+  const settings = { minimumDays: 4, dayGrouping: 'weekdayWeekend', temperatureTolerance: 0.5, historyDays: 60 };
+  const payload = { revision: initial.revision, config: { devices: [{ serialNumber: 'THERMO', scheduleLearning: settings }] } };
+  assert.equal((await store.stage(payload)).restartRequired, false);
+  const saved = await store.save(payload);
+  assert.equal(saved.restartRequired, false);
+  assert.deepEqual(saved.config.devices[0].scheduleLearning, settings);
+  const reloaded = new WebDashboardConfig(state.configPath, state.block);
+  assert.deepEqual((await reloaded.snapshot()).config.devices[0].scheduleLearning, settings);
+  for (const invalid of [{ minimumDays: 1 }, { dayGrouping: 'random' }, { historyDays: 91 }, { unexpected: true }]) {
+    await assert.rejects(store.save({ revision: saved.revision,
+      config: { devices: [{ serialNumber: 'THERMO', scheduleLearning: invalid }] } }));
+  }
+  const reset = await store.save({ revision: saved.revision,
+    config: { devices: [{ serialNumber: 'THERMO', scheduleLearning: null }] } });
+  assert.equal(reset.restartRequired, false);
+  assert.equal(reset.config.devices[0].scheduleLearning, undefined);
+});
+
 test('dashboard unit preference persists without changing rules, credentials or requiring restart', async (t) => {
   const state = await fixture(t);
   const rule = {

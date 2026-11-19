@@ -1,4 +1,12 @@
 <!-- Modified by pponce for Nest Climate Cntrl; derived from Nest Accfactory. See NOTICE. -->
+## Unreleased
+
+- Learn heating schedule preferences using repeated dates, nearby local times, weighted agreement and greater influence for recent choices. Propose temperatures that were actually selected.
+- Tune schedule-learning evidence, day grouping, history, recency, time matching, rounding and temperature similarity in each thermostat's advanced Settings. Changes apply without restarting.
+- Preserve existing user schedule entries during automatic application; conflicting suggestions require approval. Show supporting dates and weighted agreement with each suggestion.
+- Explain heating-response recommendations, their update intervals and adjustment limits, and how they coexist with Nest True Radiant, Early-On and Heat Pump Balance.
+- Place Climate rules above Sensors & fans in the desktop and compact navigation.
+
 ## v0.6.12
 
 **Room-temperature target modes, editable Nest schedules and optional preference learning.**

@@ -547,6 +547,8 @@ test('queued schedule guard tolerates unrelated changes but rejects edited-mode 
 });
 
 function learnedChoices(f) {
+  // These transport tests update a previously confirmed plugin-learned entry.
+  f.manager.record('test').learnedEntries = structuredClone(f.data.native_schedules.modes.heat);
   f.manager.record('test').events = [2, 9, 16].map((day) => ({
     at: Date.parse('2026-11-' + String(day).padStart(2, '0') + 'T15:10:00Z'),
     value: 22, source: 'room', zone: 'America/Los_Angeles',
@@ -557,6 +559,81 @@ async function enableAutomaticLearning(f) {
   await f.manager.action(f.payload('autoApply', { value: true, confirmation: 'enable-auto-apply-learning' }));
   await f.manager.applying;
 }
+
+test('existing user entries require approval and learned ownership survives confirmation and restart', async (t) => {
+  const f = await fixture(t);
+  learnedChoices(f);
+  delete f.manager.record('test').learnedEntries;
+  f.data.native_schedules.autoSchedule = false;
+  await enableAutomaticLearning(f);
+  assert.equal(f.calls.length, 0);
+  const suggestion = f.manager.snapshot('test').suggestions[0];
+  assert.equal(suggestion.requiresApproval, true);
+  await assert.rejects(f.manager.action(f.payload('apply', { id: suggestion.id })), /existing user schedule/);
+  await f.manager.action(f.payload('approve', { id: suggestion.id }));
+  assert.equal(f.manager.record('test').learnedEntries, undefined, 'Ownership waits for Nest confirmation');
+  f.data.native_schedules.modes.heat = f.calls[0][1].temperature_schedules.heat;
+  f.manager.snapshot('test');
+  await f.manager.saving;
+  const restarted = new NestSchedules(f.dashboard, f.manager.now);
+  await restarted.start();
+  assert.deepEqual(restarted.record('test').learnedEntries, [{ ...row, heat: 22 }]);
+  await f.manager.action(f.payload('save', { mode: 'heat', entries: [{ ...row, heat: 22.5 }],
+    confirmation: 'save-temperature-schedule' }));
+  f.data.native_schedules.modes.heat = [{ ...row, heat: 22.5 }];
+  f.manager.snapshot('test');
+  assert.deepEqual(f.manager.record('test').learnedEntries, [], 'A manually edited schedule has no automatically owned entries');
+  await f.manager.saving;
+});
+
+test('a learned routine can move in time without leaving its previous entry behind', async (t) => {
+  const f = await fixture(t);
+  learnedChoices(f);
+  f.manager.record('test').events.forEach((event) => { event.at += 20 * 60000; });
+  f.data.native_schedules.autoSchedule = false;
+  await enableAutomaticLearning(f);
+  assert.deepEqual(f.calls[0][1].temperature_schedules.heat, [{ ...row, time: row.time + 1800, heat: 22 }]);
+  await f.manager.saving;
+});
+
+test('live settings update evidence requirements, fail closed when invalid, and guard queued writes', async (t) => {
+  const f = await fixture(t);
+  learnedChoices(f);
+  f.dashboard.automation = { deviceOptions: [{ serialNumber: 'TEST', scheduleLearning: { minimumDays: 4 } }] };
+  assert.equal(f.manager.snapshot('test').suggestions.length, 0);
+  f.dashboard.automation.deviceOptions[0].scheduleLearning = { minimumDays: 3 };
+  assert.equal(f.manager.snapshot('test').suggestions.length, 1);
+  f.dashboard.automation.deviceOptions[0].scheduleLearning = { minimumDays: 1 };
+  await enableAutomaticLearning(f);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.manager.snapshot('test').autoApplyStatus, 'attention');
+  const before = f.manager.record('test').events.length;
+  await f.manager.observe('test', 23);
+  assert.equal(f.manager.record('test').events.length, before);
+
+  const queued = await fixture(t, (_id, _values, options) => {
+    queued.dashboard.automation.deviceOptions[0].scheduleLearning.minimumDays = 4;
+    assert.equal(options.guard(), false);
+    throw new Error('Changed learning settings');
+  });
+  learnedChoices(queued);
+  queued.data.native_schedules.autoSchedule = false;
+  queued.dashboard.automation = { deviceOptions: [{ serialNumber: 'test', scheduleLearning: { minimumDays: 3 } }] };
+  await enableAutomaticLearning(queued);
+  assert.ok(queued.manager.record('test').pending.failure);
+});
+
+test('retained history supports longer windows without learning from automatic events', async (t) => {
+  const f = await fixture(t);
+  const record = f.manager.record('test');
+  record.events = [50, 95].map((days) => ({ at: f.manager.now() - days * 86400000,
+    value: 21, zone: 'America/Los_Angeles', source: 'room' }));
+  await f.manager.observe('test', 22, 'compensation');
+  assert.equal(record.events.length, 2);
+  await f.manager.observe('test', 22, 'room');
+  assert.equal(record.events.length, 2);
+  assert.ok(record.events.every((event) => f.manager.now() - event.at <= 90 * 86400000));
+});
 
 test('automatic learning is opt-in, disables Nest learning first and waits for confirmation', async (t) => {
   const f = await fixture(t);
@@ -682,7 +759,7 @@ test('automatic application skips an existing matching entry without a native wr
   assert.equal(f.manager.snapshot('test').suggestions.length, 0);
 });
 
-test('aging evidence does not reapply an entry changed externally; new intentional evidence can qualify', async (t) => {
+test('aging and new evidence preserve externally edited entries until explicit approval', async (t) => {
   const f = await fixture(t);
   learnedChoices(f);
   f.manager.record('test').events.unshift({ at: Date.parse('2026-10-26T14:10:00Z'),
@@ -698,10 +775,14 @@ test('aging evidence does not reapply an entry changed externally; new intention
   await f.manager.applyLearned();
   assert.equal(f.calls.length, 1);
   const suggestion = f.manager.snapshot('test').suggestions[0];
-  await assert.rejects(f.manager.action(f.payload('apply', { id: suggestion.id })), /already attempted/);
+  await assert.rejects(f.manager.action(f.payload('apply', { id: suggestion.id })), /existing user schedule/);
   f.manager.record('test').events.push({ at: Date.parse('2026-12-07T15:10:00Z'),
     value: 22, source: 'room', zone: 'America/Los_Angeles' });
   await f.manager.applyLearned();
+  assert.equal(f.calls.length, 1);
+  const revised = f.manager.snapshot('test').suggestions[0];
+  assert.equal(revised.requiresApproval, true);
+  await f.manager.action(f.payload('approve', { id: revised.id }));
   assert.equal(f.calls.length, 2);
 });
 

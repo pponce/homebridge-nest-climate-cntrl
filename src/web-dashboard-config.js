@@ -1,3 +1,4 @@
+import { learningSettingsError } from '../homebridge-ui/public/schedule-learning.js';
 import { occupancyConditionError } from '../homebridge-ui/public/occupancy-condition.js';
 import { windowError, ruleTimeZone, rulesInTimeZone, systemTimeZone } from '../homebridge-ui/public/rule-window.js';
 import { fanManualHoldError } from '../homebridge-ui/public/fan-speed.js';
@@ -18,6 +19,7 @@ const DEVICE_FIELDS = [
   'sensorPreview',
   'scheduleTimeZone',
   'heatingType',
+  'scheduleLearning',
   'heatingResponseEnabled',
   'homeKitRoomTemperature',
 ];
@@ -76,6 +78,7 @@ function runtimeSignature(block) {
     if (object(device)) {
       delete device.scheduleTimeZone;
       delete device.heatingType;
+      delete device.scheduleLearning;
       delete device.heatingResponseEnabled;
       delete device.homeKitRoomTemperature;
     }
@@ -283,6 +286,9 @@ export class WebDashboardConfig {
           safe[key] = entry[key];
         }
       }
+      if (entry.scheduleLearning !== undefined) {
+        safe.scheduleLearning = structuredClone(entry.scheduleLearning);
+      }
       if (object(entry.sensorPreview)) {
         safe.sensorPreview = {
           selected: Array.isArray(entry.sensorPreview.selected)
@@ -427,6 +433,10 @@ export class WebDashboardConfig {
               text(value, 64) && Number.isFinite(seconds) && seconds >= 900 && seconds <= 604800,
               'Choose an HVAC fan duration from 15 minutes to 7 days.',
             );
+          }
+          if (key === 'scheduleLearning') {
+            const error = learningSettingsError(value);
+            assert(!error, error);
           }
           if (key === 'heatingType') {
             assert(value === 'unknown' || Object.hasOwn(HEATING_PROFILES, value), 'Choose a supported heating type.');

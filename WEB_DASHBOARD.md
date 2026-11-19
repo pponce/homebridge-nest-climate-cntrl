@@ -434,6 +434,18 @@ This setting controls how the plugin interprets Nest schedules and groups heatin
 
 Open **Settings → Thermostat settings → your thermostat → Heating response & tuning**. Choose the heating type and save. Each saved temperature rule for that thermostat has its own starting recommendation, current limits, evidence and **Apply to this rule** button.
 
+**Heating-response learning observes how the selected rooms react to heating.** It measures the delay before temperatures rise, warming speed, the difference between Nest and the rooms, and continued warming after heating stops. It recommends the plugin rule’s minimum update interval and maximum target adjustment. Observation never applies a recommendation automatically.
+
+| Feature | Responsibility |
+| --- | --- |
+| Plugin schedule learning | Learns the room temperatures and times you prefer from intentional choices. |
+| Plugin heating-response learning | Observes room response and recommends limits for the plugin’s temperature compensation. Apply recommendations explicitly. |
+| Nest True Radiant | Predicts when radiant heating should start and stop, including residual heat after shutoff. |
+| Nest Early-On | Starts compatible heating or cooling systems early to reach a scheduled temperature on time. |
+| Nest Heat Pump Balance | Manages auxiliary heat and preheating for supported heat-pump systems. Availability depends on the thermostat and equipment. |
+
+Keep the appropriate Nest timing feature enabled if it works well for the home. The plugin does not provide a second predictive preheating or early-shutoff controller, and disabling Nest Auto-Schedule does not disable True Radiant or Early-On. A room rule changes the target Nest works toward, so frequent or large adjustments can work against Nest’s predictions. Conservative plugin limits give the system time to respond. Without an active room-compensation rule, these limits do not affect heating. The observer does not read or reproduce Nest’s internal thermal model, and its recommendations are not guaranteed optimal settings.
+
 | Heating type | Starting minimum update interval | Starting maximum target adjustment |
 | --- | --- | --- |
 | Forced air | 10 minutes | ±1 °C / ±1.8 °F |
@@ -456,7 +468,7 @@ The suggested interval combines response delay, estimated time to warm another 0
 
 Save or discard any pending edits before applying a recommendation. **Apply to this rule** saves only that rule's minimum update interval and maximum adjustment. Its desired temperature, sensors, enabled/paused state and all other rules are preserved. An enabled rule uses the new limits on its next normal execution check. No bridge restart is required. Recommendations cannot be applied if their evidence or saved configuration has changed since they were displayed; refresh and review again.
 
-For background on radiant response and stored heat, see [Google's True Radiant explanation](https://support.google.com/googlehome/answer/9250165) and [Watts' radiant heating FAQ](https://www.watts.com/support/faq-radiant). The numeric suggestions above are this plugin's own heuristics.
+For background on radiant response and stored heat, see [Google's True Radiant explanation](https://support.google.com/googlehome/answer/9250165) , [Early-On](https://support.google.com/googlehome/answer/9246532) and [Heat Pump Balance](https://support.google.com/googlehome/answer/9248719). The numeric suggestions above are this plugin's own heuristics.
 
 ## Restart after saving
 
@@ -548,11 +560,29 @@ An eligible temperature rule disables Nest Auto-Schedule by default on thermosta
 
 The collapsed **Temperature schedule** section shows separate **Nest Auto-Schedule**, **Plugin learning**, and **Plugin auto-apply** badges. On is green, Off is muted red, and Paused, Waiting or Needs attention is amber. A fixed-rule pause is shown separately from saved On preferences. Offline Nest state is identified as last reported. Both this section and **Temperature controlled by** have bordered, collapsible panels.
 
-**Learn room-temperature preferences** defaults on. It records intentional desired-room-temperature changes made through the dashboard or Apple Home, including confirmed native target adjustments handled by an active rule. Compensation writes, Eco changes, existing schedule events and unclassified changes outside the plugin do not train it. At most 500 observations from the last 42 days are retained locally. A valid thermostat schedule time zone is required.
+**Learn room-temperature preferences** defaults on. It records intentional desired-room-temperature changes made through the dashboard or Apple Home, including confirmed native target adjustments handled by an active rule. Compensation writes, Eco changes, existing schedule events and unclassified changes outside the plugin do not train it. At most 500 observations from the last 90 days are retained locally. The default learning window uses the most recent 42 days. A valid thermostat schedule time zone is required.
 
-The plugin suggests a heating entry after similar choices on at least three distinct dates for the same weekday and 30-minute interval. The observed targets must span no more than 0.6°C (1.08°F); the proposed target is their median rounded to 0.1°C. A same-day correction replaces that day's earlier evidence for the interval. Time-zone changes do not combine observations from different zones.
+The learner groups choices by local clock time and counts one final choice per local date in each time group. It gives recent choices greater weight and requires both enough supporting dates and enough agreement before proposing an entry. Conflicting temperatures reduce agreement. The proposed temperature is a weighted median selected from actual choices. No-change periods are not treated as approval; scheduled targets, compensation and Eco changes never become preference evidence. Time-zone changes keep observations from different zones separate.
 
-**Automatically apply learned preferences** is a separate option, off by default. With it off, review each suggestion and select **Approve and save to Nest**, or **Dismiss**. Enabling it shows a confirmation explaining that the plugin will turn off Nest Auto-Schedule, preserving the existing weekly entries. After Nest confirms learning is off, the plugin automatically saves current and future qualifying heating suggestions. Each suggestion adds or replaces only the heating entry at that exact weekday and time, preserving the other entries. An entry that already matches is not rewritten. Turning Nest Auto-Schedule on through the dashboard turns this automatic application option off, while room-preference learning can stay on.
+Open **Settings → Thermostat settings → your thermostat → Schedule learning · advanced settings** to tune the logic:
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| Learn patterns for | Each weekday separately | Learn each weekday independently, combine weekdays/weekends, or combine all days. Grouped patterns propose entries for every day in the group, including unobserved days. |
+| Minimum observed days | 3 | Supporting choices must come from this many separate local dates. Same-day corrections count once. |
+| History window | 42 days | Only choices this recent contribute, subject to the 90-day/500-choice retention limits. |
+| Recent-choice half-life | 14 days | A choice 14 days old has half the influence of a new choice. The minimum-date requirement still applies. |
+| Time similarity | 30 minutes | Maximum span between choices treated as one routine; choices on either side of a half-hour boundary can match. |
+| Schedule time rounding | 30 minutes | Round the representative local time to this interval, within the same day. This does not control preheating. |
+| Temperature similarity | 0.6°C / 1.08°F | Maximum spread of temperatures in a matching group. |
+| Required agreement | 75% | Matching choices must supply this proportion of the group’s recency-weighted evidence. |
+
+**Use default learning settings** restores these values in the draft. **Save changes** applies settings without restarting and recalculates suggestions from retained history. If automatic application is already on, newly qualifying entries may be saved to Nest. Changing settings does not enable automatic application. Longer evidence requirements can take several weeks to satisfy when weekdays are learned separately.
+
+The design uses weighted pattern recognition and repeated intentional choices described in Nest’s [Enhanced Auto-Schedule white paper](https://nest.com/support/images/Whitepapers/Nest_Auto_Schedule_Whitepaper.pdf). The configurable thresholds and weights are this plugin’s implementation, not Nest’s unpublished algorithm.
+
+
+**Automatically apply learned preferences** is a separate option, off by default. With it off, review each suggestion and select **Approve and save to Nest**, or **Dismiss**. Enabling it shows a confirmation explaining that the plugin will turn off Nest Auto-Schedule, preserving the existing weekly entries. After Nest confirms learning is off, the plugin automatically saves current and future qualifying heating suggestions. Automatic application adds an entry or updates the closest nearby entry previously learned and confirmed by this plugin. A conflicting existing user entry, including an externally changed learned entry, requires **Approve and save to Nest**. Approval can replace the entry at the proposed day/time or the closest nearby plugin-learned entry; other entries are preserved. Saving a heating schedule manually makes its entries user-controlled. An entry that already matches is not rewritten. Turning Nest Auto-Schedule on through the dashboard turns this automatic application option off, while room-preference learning can stay on.
 
 Automatic application checks in the background every 30 seconds, including when the dashboard is closed. It requires learning to be enabled, Nest Auto-Schedule to be confirmed off, a current connection, a reported heating schedule and a valid schedule time zone. It waits for a request to be resolved before attempting another. Failed or unconfirmed writes are not automatically replayed, including after restart; review the reported response and schedule. Turning off learning also turns off automatic application. Turning learning back on leaves automatic application off until explicitly enabled again.
 

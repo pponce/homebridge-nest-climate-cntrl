@@ -1,3 +1,4 @@
+import { learningSettings } from './schedule-learning.js';
 import { displayTemperature, celsiusTemperature } from './climate-utils.js';
 
 const views = new Map();
@@ -71,11 +72,15 @@ export function renderScheduleControls(device, { unit, live, send, refresh }) {
   const learn = node('input'); learn.type = 'checkbox'; learn.checked = model.learning !== false; learn.disabled = !live || view.busy || model.learningPaused;
   learn.addEventListener('change', () => void submit({ action: 'learning', value: learn.checked }));
   body.append(label('Learn room-temperature preferences', learn));
-  body.append(node('p', 'Suggests heating entries from intentional room-target choices in this dashboard and Apple Home. Requires three similar choices on separate dates for the same weekday and half-hour. Nest Auto-Schedule changes, scheduled targets, compensation and Eco changes do not train this learner.', 'small-note'));
+  body.append(node('p', 'Suggests heating entries from repeated intentional room-target choices in this dashboard and supported Apple Home room controls. Recent choices carry more weight. Scheduled targets, compensation and Eco changes do not train this learner. Tune the logic in Settings → Thermostat settings → Schedule learning.', 'small-note'));
+  const settings = learningSettings(model.learningSettings);
+  const grouping = { sameWeekday: 'each weekday separately', weekdayWeekend: 'weekdays together and weekends together', daily: 'every day together' };
+  body.append(node('p', 'Current learning: ' + settings.minimumDays + ' observed dates · ' + settings.historyDays + '-day window · ' + settings.minimumAgreementPercent + '% weighted agreement · ' + grouping[settings.dayGrouping] + '.', 'small-note'));
+  if (model.learningError) body.append(node('p', model.learningError, 'schedule-warning'));
   const applyLearning = node('input'); applyLearning.type = 'checkbox'; applyLearning.checked = model.autoApply === true;
   applyLearning.disabled = !live || view.busy || model.learning === false || model.learningPaused;
   applyLearning.addEventListener('change', () => {
-    if (applyLearning.checked) confirm('Enable automatic application of learned preferences? This turns off Nest Auto-Schedule, Nest’s automatic schedule-learning feature. Existing schedule entries are kept. After Nest confirms Auto-Schedule is off, current and future qualifying heating suggestions will be saved without individual approval, replacing entries at the same weekday and time. Turning off learning also turns off automatic application.',
+    if (applyLearning.checked) confirm('Enable automatic application of learned preferences? This turns off Nest Auto-Schedule, Nest’s automatic schedule-learning feature. Existing schedule entries are kept. After Nest confirms Auto-Schedule is off, current and future qualifying heating suggestions will be saved without individual approval, updating entries previously learned by this plugin. Conflicts with existing user schedule entries require individual approval. Turning off learning also turns off automatic application.',
       { action: 'autoApply', value: true, confirmation: 'enable-auto-apply-learning' });
     else void submit({ action: 'autoApply', value: false });
   });
@@ -168,8 +173,10 @@ export function renderScheduleControls(device, { unit, live, send, refresh }) {
     for (const suggestion of model.suggestions) {
       const summary = days[suggestion.day] + ' · ' + clock(suggestion.time) + ' · Heat ' + displayTemperature(suggestion.heat, unit).toFixed(1) + '°' + unit;
       const item = node('div', undefined, 'schedule-suggestion');
-      item.append(node('p', summary + ' · ' + suggestion.observations + ' observed dates'));
-      item.append(button('Approve and save to Nest', () => confirm('Save ' + summary + ' to Nest’s heating schedule? An entry at that exact day and time will be replaced; other entries stay unchanged.',
+      item.append(node('p', summary + ' · ' + suggestion.observations + ' observed dates' +
+        (Number.isFinite(suggestion.agreementPercent) ? ' · ' + suggestion.agreementPercent + '% weighted agreement' : '')));
+      if (suggestion.requiresApproval) item.append(node('p', 'Review required: this suggestion overlaps an existing user schedule entry.', 'schedule-warning'));
+      item.append(button('Approve and save to Nest', () => confirm('Save ' + summary + ' to Nest’s heating schedule? An entry at that exact day and time, or the closest nearby entry previously learned by this plugin, will be replaced. Other entries stay unchanged.',
         { action: 'approve', id: suggestion.id }), enabled && !view.draft && !model.learningPaused && Array.isArray(model.modes.heat)));
       item.append(button('Dismiss', () => void submit({ action: 'dismiss', id: suggestion.id }), live && !view.busy)); body.append(item);
     }
