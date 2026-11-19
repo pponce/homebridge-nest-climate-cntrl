@@ -7,7 +7,9 @@ import { ClimateAccess } from '../homebridge-ui/climate-access.js';
 import { HeatingResponse } from './heating-response.js';
 import { DashboardConfigError } from './web-dashboard-config.js';
 import { sensorSources, presenceSources } from '../homebridge-ui/public/sensor-preview.js';
-import { scheduleTimeZone, selectedNestSensor } from '../homebridge-ui/public/climate-utils.js';
+import {
+  scheduleTimeZone, selectedNestSensor, temperatureTargetMode, desiredRoomTarget, roomTargetSource,
+} from '../homebridge-ui/public/climate-utils.js';
 import { normalizeFanRule, sameFanSpeed } from '../homebridge-ui/public/fan-speed.js';
 import {
   runFanSpeed, releaseFanSpeed, validSpeedLease, prepareFanRules, handoffFanLease, waitFanFeedback, fanFeedbackAction,
@@ -28,7 +30,7 @@ const fresh = (source, now) =>
   source?.available === true && Number.isFinite(source.lastReadAt) && source.lastReadAt <= now + 1000 && now - source.lastReadAt <= 90000;
 const target = (device) => device?.data.target_temperature_low ?? device?.data.target_temperature;
 const validTarget = (value) => Number.isFinite(value) && value >= 9 && value <= 32;
-const desiredTarget = (state) => state.roomTarget?.value ?? state.rule.desiredTemperature;
+const desiredTarget = desiredRoomTarget;
 const targetDelta = (before, after, scale) => scale === 'F' ?
     (Math.round(after * 1.8 + 32) - Math.round(before * 1.8 + 32)) / 1.8 : after - before;
 const shiftedTarget = (desired, delta) => Number(Math.max(9, Math.min(32, desired + delta)).toFixed(8));
@@ -120,6 +122,7 @@ export class ClimateAutomation {
     this.log = log;
     this.onState = onState;
     this.states = new Map();
+    this.sources = new Map();
     this.explanations = new Map();
     this.leases = new Map();
     this.fanOverrides = new Map();
@@ -169,7 +172,8 @@ export class ClimateAutomation {
           if (state.scheduleTarget && (!validTarget(state.scheduleTarget.expected) || !Number.isFinite(state.scheduleTarget.at))) {
             throw new Error('Invalid saved schedule target');
           }
-          if (state.roomTarget && (!validTarget(state.roomTarget.value) || !['manual', 'schedule'].includes(state.roomTarget.source))) {
+          if (state.roomTarget && (!validTarget(state.roomTarget.value) ||
+              !['manual', 'schedule', 'initial'].includes(state.roomTarget.source))) {
             throw new Error('Invalid saved room target');
           }
           if (state.manualTarget && (!state.manualTarget.accepted || !validTarget(state.manualTarget.expected) ||
@@ -334,7 +338,8 @@ export class ClimateAutomation {
         nextWindowStart: state.windowStatus?.nextStart ?? null,
         desiredTemperature: desiredTarget(state),
         savedDesiredTemperature: state.rule.desiredTemperature,
-        targetSource: state.roomTarget?.source ?? 'rule',
+        targetMode: state.rule.kind === 'temperature' ? temperatureTargetMode(state.rule) : undefined,
+        targetSource: roomTargetSource(state),
         manualTargetBehavior: state.rule.kind === 'temperature' ? state.rule.manualTargetBehavior ?? 'follow' : undefined,
         hasSchedule: state.scheduleKey !== undefined && state.scheduleKey !== null,
         nestTarget: target(this.dashboard.devices.get(state.rule.thermostatId)) ?? state.nestTarget,
@@ -506,11 +511,17 @@ export class ClimateAutomation {
         }
       }
       if (old && rule.kind === 'temperature' &&
-          (old.rule.desiredTemperature !== rule.desiredTemperature || old.rule.thermostatId !== rule.thermostatId)) {
+          (old.rule.desiredTemperature !== rule.desiredTemperature || old.rule.thermostatId !== rule.thermostatId ||
+            old.rule.targetMode !== rule.targetMode)) {
+        const retained = old.controlStarted && this.windowPermits(old) && old.rule.thermostatId === rule.thermostatId ?
+          desiredTarget(old) : null;
         if (state.manualTarget) {
           this.pause(state, 'The room target changed during a manual Nest command. Review it, then Resume.');
         }
         this.resetTemperatureTarget(state);
+        if (rule.targetMode === 'follow' && validTarget(retained)) {
+          state.roomTarget = { value: retained, source: 'initial' };
+        }
       }
       if (old && JSON.stringify(old.rule.sourceIds) !== JSON.stringify(rule.sourceIds)) {
         state.holds = {};
@@ -747,6 +758,7 @@ export class ClimateAutomation {
         if (previous.paused) {
           continue;
         }
+        const inheritedTarget = desiredTarget(previous);
         const fields = ['controlStarted', 'roomTarget', 'manualTarget', 'scheduleTarget', 'referenceTarget',
           'scheduleKey', 'scheduleSignature', 'scheduleDesired', 'scheduleZone', 'lastWriteAt', 'targetEpoch', 'recovering'];
         for (const field of fields) {
@@ -755,6 +767,15 @@ export class ClimateAutomation {
           } else {
             state[field] = previous[field];
           }
+        }
+        if (temperatureTargetMode(state.rule) === 'fixed') {
+          delete state.roomTarget;
+          // A manual request belongs to its original rule; it cannot alter a fixed target.
+          if (state.manualTarget) {
+            this.pause(state, 'A manual target is pending at the rule change. Review Nest, then Resume.');
+          }
+        } else if (!state.roomTarget && validTarget(inheritedTarget)) {
+          state.roomTarget = { value: inheritedTarget, source: 'initial' };
         }
         state.handoffNotBefore = Math.max(previous.handoffNotBefore ?? 0,
           (previous.lastWriteAt ?? 0) + (previous.rule.minimumIntervalMinutes ?? 5) * MINUTE);
@@ -960,7 +981,18 @@ export class ClimateAutomation {
       option.serialNumber.toUpperCase() === serial.toUpperCase() && option.homeKitRoomTemperature === true)) {
       return null;
     }
-    return this.roomControl(serial);
+    const room = this.roomControl(serial);
+    // Fixed targets are edited in the rule. Native Apple Home changes remain manual overrides.
+    return room?.targetMode === 'fixed' ? null : room;
+  }
+
+  temperaturePolicy(serial) {
+    const state = [...this.states.values()].filter((entry) => entry.rule.kind === 'temperature' &&
+      entry.rule.thermostatId === serial && entry.rule.enabled && !entry.paused &&
+      windowActive(entry.rule.window, this.now()) && this.occupancyCondition(entry).matches !== false)
+      .sort((a, b) => (b.rule.priority ?? 0) - (a.rule.priority ?? 0))[0];
+    return state ? { id: state.rule.id, name: state.rule.name, targetMode: temperatureTargetMode(state.rule),
+      desiredTemperature: desiredTarget(state) } : null;
   }
 
   roomControl(serial) {
@@ -1000,7 +1032,7 @@ export class ClimateAutomation {
       [source.id, ...(source.aliases ?? [])].map((id) => [id, source])));
     const temperature = this.temperatureInputs(state.rule, sources);
     return temperature === null || !validTarget(desiredTarget(state)) ? null : {
-      ruleId: state.rule.id, temperature, desiredTemperature: desiredTarget(state),
+      ruleId: state.rule.id, temperature, desiredTemperature: desiredTarget(state), targetMode: temperatureTargetMode(state.rule),
     };
   }
 
@@ -1016,6 +1048,9 @@ export class ClimateAutomation {
       const saved = envelope.config.rules.temperature.find((rule) => rule.id === request?.ruleId);
       const enabled = envelope.config.devices.some((option) =>
         option.serialNumber.toUpperCase() === serial?.toUpperCase() && option.homeKitRoomTemperature === true);
+      if (state && temperatureTargetMode(state.rule) === 'fixed') {
+        throw new Error('Edit the fixed room temperature in Climate rules.');
+      }
       if (envelope.rulesError || (homeKit && !enabled) || !permitted() || JSON.stringify(saved) !== JSON.stringify(state?.rule) ||
           !this.roomControl(serial) || this.dashboard.devices.get(serial)?.id !== deviceId ||
           !request || Object.keys(request).some((key) => !['ruleId', 'value'].includes(key)) || !validTarget(request.value)) {
@@ -1071,7 +1106,11 @@ export class ClimateAutomation {
   }
 
   applyRoomTarget(state, value, source, actual) {
-    state.roomTarget = { value, source };
+    if (temperatureTargetMode(state.rule) === 'fixed') {
+      delete state.roomTarget;
+    } else {
+      state.roomTarget = { value, source };
+    }
     state.referenceTarget = actual;
     state.lastWriteAt = this.now();
     this.leases.delete('temperature:' + state.rule.thermostatId);
@@ -1192,7 +1231,7 @@ export class ClimateAutomation {
     const previous = state.referenceTarget ?? lease?.expected;
     if (state.controlStarted && validTarget(previous) && !equal(actual, previous)) {
       this.leases.delete(key);
-      if (state.rule.manualTargetBehavior === 'pause') {
+      if (temperatureTargetMode(state.rule) === 'fixed' || state.rule.manualTargetBehavior === 'pause') {
         this.pause(state, 'Nest’s target changed manually. Resume when ready to use the room-temperature group again.');
         return false;
       }
@@ -1363,7 +1402,7 @@ export class ClimateAutomation {
       }
       return;
     }
-    const schedulePolicy = await this.dashboard.schedules?.ensureRulePolicy(rule.thermostatId);
+    const schedulePolicy = await this.dashboard.schedules?.ensureRulePolicy(rule.thermostatId, temperatureTargetMode(rule) === 'fixed');
     if (schedulePolicy) {
       state.phase = 'waiting';
       state.reason = schedulePolicy;
@@ -1379,7 +1418,7 @@ export class ClimateAutomation {
     if (state.ecoSuspended) {
       // Reconcile the current schedule without treating the Eco target as a manual room adjustment.
       state.referenceTarget = target(device);
-      if (validTarget(schedule.desired)) {
+      if (temperatureTargetMode(rule) !== 'fixed' && validTarget(schedule.desired)) {
         state.controlStarted = true;
         state.scheduleTarget ??= { expected: schedule.desired, at: this.now(), priorTargets: [target(device)] };
         state.scheduleKey = schedule.position;
@@ -1393,6 +1432,11 @@ export class ClimateAutomation {
     }
     if (!this.temperatureSchedule(state, device, schedule)) {
       return;
+    }
+    if (rule.targetMode === 'follow' && !validTarget(desiredTarget(state)) && validTarget(target(device))) {
+      // Start with confirmed thermostat intent, never the historical weekly entry or a guessed default.
+      const owned = this.leases.get(key);
+      state.roomTarget = { value: owned?.owner === rule.id ? owned.baseline : target(device), source: 'initial' };
     }
     lease = this.leases.get(key);
     if (validTarget(target(device))) {
@@ -1771,7 +1815,8 @@ export class ClimateAutomation {
         if (onlyTarget && validTarget(requested) && validTarget(before) && equal(requested, before)) {
           continue;
         }
-        if (onlyTarget && validTarget(requested) && !state.paused && state.controlStarted && !state.scheduleTarget &&
+        if (onlyTarget && validTarget(requested) && temperatureTargetMode(state.rule) !== 'fixed' &&
+            !state.paused && state.controlStarted && !state.scheduleTarget &&
             state.rule.manualTargetBehavior !== 'pause' && this.connected(device) && device.data.hvac_mode === 'heat' &&
             device.data.eco_mode === false && device.data.temperature_lock !== true && nativeSensorAllowsHeating(device.data)) {
           if (validTarget(before)) {
@@ -1871,7 +1916,7 @@ export class ClimateAutomation {
         throw new Error('Select an enabled rule and supported action.');
       }
       if (payload.action === 'resetTarget') {
-        if (state.rule.kind !== 'temperature' || state.manualTarget || state.scheduleTarget) {
+        if (state.rule.kind !== 'temperature' || state.rule.targetMode !== undefined || state.manualTarget || state.scheduleTarget) {
           throw new DashboardConfigError('Select a temperature rule and wait for pending Nest target confirmation.');
         }
         for (const candidate of this.states.values()) {

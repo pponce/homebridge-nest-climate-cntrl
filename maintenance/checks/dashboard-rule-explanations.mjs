@@ -208,8 +208,9 @@ export async function checkRuleExplanations(page, output, label) {
       if (mode === 'mapped-paused') assert.match(status, /Preview · automatic control paused/);
       if (mode === 'mapped-off') {
         assert.match(status, /Preview · rule is not requesting this fan/);
-        assert.equal(await graph().locator('.fan-curve-reported').count(), 0);
-        assert.match(await card('living-fan').locator('.fan-curve-key').innerText(), /Reported: Off/);
+        assert.equal(await graph().locator('.fan-curve-reported').getAttribute('data-speed'), '0');
+        assert.equal(await graph().getByText('Off · 0%', { exact: true }).count(), 1);
+        assert.match(await card('living-fan').locator('.fan-curve-key').innerText(), /Reported: Off · 0%/);
       }
       if (mode === 'mapped-unknown') assert.equal(await graph().locator('.fan-curve-current, .fan-curve-reported').count(), 0);
       if (mode === 'mapped-hot') assert.equal(await graph().locator('.fan-curve-current').getAttribute('data-speed'), '57');

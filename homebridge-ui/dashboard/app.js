@@ -1,7 +1,7 @@
 import { renderScheduleControls } from '/shared/schedule-controls.js';
 import { occupancyConditionError, occupancyConditionStatus } from '/shared/occupancy-condition.js';
 import { windowDays, windowError, windowSummary, ruleWindow, ruleTimeZone, rulesInTimeZone } from '/shared/rule-window.js';
-import { scheduleOverview, displayTemperature, celsiusTemperature, scheduleTimeZone, selectedNestSensor, temperatureControlView } from '/shared/climate-utils.js';
+import { scheduleOverview, displayTemperature, celsiusTemperature, scheduleTimeZone, selectedNestSensor, temperatureControlView, temperatureTargetMode, temperatureTargetLabel } from '/shared/climate-utils.js';
 import { mountTimeZonePicker, timeZoneChoices } from '/shared/time-zone-picker.js';
 import { mountConnectionPage } from '/shared/connection-page.js';
 import { sensorSources, previewGroup, presenceSources } from '/shared/sensor-preview.js';
@@ -880,7 +880,8 @@ function overviewFanCurve(card, runtime, entry) {
   const current = evidenceCurrent(runtime);
   const source = overviewFanSources.get(entry.id);
   const reportedSpeed = entry.feedbackCurrent && entry.running ? entry.speed : null;
-  const view = fanCurveView(rule, source, current ? report?.average : null, reportedSpeed);
+  const view = fanCurveView(rule, source, current ? report?.average : null, reportedSpeed,
+    entry.feedbackCurrent ? entry.running : undefined);
   if (!view) return;
   const fan = report?.fans?.find((fan) => fan.id === entry.id);
   const active = current && runtime.enabled && !runtime.paused && !entry.override && !entry.restoring &&
@@ -904,11 +905,12 @@ function overviewFanCurve(card, runtime, entry) {
     'Curve setting: ' + view.settingLabel + ' · ' + number(view.setting) :
     'Curve request: ' + number(view.requested) + (view.setting === null ? ' · supported setting unavailable' : ' → fan setting ' + number(view.setting))));
   const feedback = el('div'); feedback.append(el('i', undefined, 'fan-curve-dot reported'));
-  feedback.append(el('span', 'Reported: ' + (!entry.feedbackCurrent ? 'unavailable' : !entry.running ? 'Off' :
+  feedback.append(el('span', 'Reported: ' + (!entry.feedbackCurrent ? 'unavailable' : !entry.running ? 'Off · 0%' :
     (entry.setting ? entry.setting + ' · ' : '') + (Number.isFinite(entry.speed) ? number(entry.speed) : 'On · speed unavailable'))));
   legend.append(curve, feedback); figure.append(legend);
   figure.append(el('p', 'Rule range ' + view.minimum + '–' + view.maximum + '% · ' +
     (view.mapped ? 'Steps show mapped fan settings.' : 'Line shows the percentage curve.') +
+    ' Off is shown separately; the run condition decides on/off.' +
     (view.reportedOutside ? ' The reported setting is outside this curve’s range.' : ''), 'fan-curve-footnote'));
   card.append(figure);
 }
@@ -1024,7 +1026,7 @@ function temperatureEvidence(host, runtime) {
   renderHeatingFeedback(host, runtime);
   evidenceSources(host, report);
   evidenceNote(host, 'Desired room temperature: ' + formatTemp(heat.desired) + ' · ' +
-    ({ rule: 'saved rule target', schedule: 'Nest schedule target', manual: 'manual room target' }[heat.targetSource] || 'room target') + '.');
+    ({ rule: 'starting rule target', fixed: 'fixed room target', initial: 'starting room target', schedule: 'Nest schedule target', manual: 'manual room target' }[heat.targetSource] || 'room target') + '.');
   if (Number.isFinite(heat.rawOffset)) evidenceNote(host, 'Nest built-in sensor ' + formatTemp(heat.physical) + ' − room average ' +
     formatTemp(report.average) + ' = ' + formatDifference(heat.rawOffset) + ' offset. Allowed adjustment: ±' +
     formatDifference(heat.maximumOffset) + '. Desired room target + bounded offset, rounded to Nest’s temperature steps: ' +
@@ -1042,13 +1044,19 @@ function renderTemperatureController(device, expanded) {
   section.dataset.thermostat = device.serial;
   const summary = el('summary');
   summary.setAttribute('aria-label', 'Temperature controlled by for ' + (device.data.description || 'thermostat'));
-  summary.setAttribute('aria-description', view.title + ' · ' + view.label);
+  summary.setAttribute('aria-description', view.detail);
   const heading = el('span', undefined, 'controller-heading');
   heading.append(el('span', 'Temperature controlled by', 'control-caption'), el('strong', view.title, 'controller-name'));
-  summary.append(heading, pill(view.label, view.tone), icon('down'));
+  const controllerBadge = pill(view.label, view.tone); controllerBadge.title = view.detail;
+  summary.append(heading, controllerBadge, icon('down'));
   const body = el('div', undefined, 'controller-details'); body.append(el('p', view.detail, 'small-note'));
   const applied = view.rules.find((rule) => ['active', 'interval', 'updating', 'recovering'].includes(rule.status));
   const runtime = applied && state.status.automation?.rules?.find((rule) => rule.id === applied.id);
+  const targetPolicy = runtime || device.scheduleControls?.temperatureRule;
+  if (targetPolicy) {
+    heading.append(el('small', temperatureTargetLabel(targetPolicy)));
+    body.append(el('p', temperatureTargetLabel(targetPolicy), 'small-note'));
+  }
   if (Number.isFinite(runtime?.desiredTemperature)) {
     body.append(el('p', 'Desired room temperature: ' + formatTemp(runtime.desiredTemperature) +
       ' · Selected rooms: ' + formatTemp(runtime.roomTemperature), 'small-note'));
@@ -1122,7 +1130,7 @@ $('runtime-device').addEventListener('change', renderRuntime);
 const scheduleHelp = fieldHelpLabel('Coming up', () =>
   'This card and the runtime chart follow the selected thermostat above. Times use that thermostat’s Nest schedule time zone. Heat mode shows heating targets, Cool mode shows cooling targets, and Heat / Cool shows both.\n\n' +
   'Built-in sensor only, without a climate temperature rule: Nest uses the scheduled target with its own temperature reading. If a Nest room sensor is selected, Nest uses that sensor instead.\n\n' +
-  'Active climate temperature rule: a confirmed Nest schedule target becomes the rule’s desired room temperature. The plugin then adjusts the actual Nest target using the selected sensor readings, adjustment limit and minimum update interval. For an equal-average rule, the desired temperature applies to the selected sensors’ average.\n\n' +
+  'Follow thermostat and schedule: a confirmed Nest schedule target becomes the rule’s desired room temperature. Maintain fixed room temperature: the room target stays at the value saved in the rule, including when a Nest schedule runs. Both modes adjust Nest’s target using selected sensor readings, the adjustment limit and minimum update interval. For an equal-average rule, the target applies to the selected sensors’ average.\n\n' +
   'The rule must still be controlling heating when the change occurs. Rule time windows can change which group is active. Eco, Off and holds can affect whether a scheduled target takes effect. A planned time does not confirm when a temporary adjustment ends.');
 scheduleHelp.querySelector('button').setAttribute('aria-label', 'Help for Nest temperature schedule');
 scheduleHelp.firstElementChild.replaceWith(el('h3', 'Coming up'));
@@ -1382,7 +1390,7 @@ function renderSettings() {
     const options = deviceOptions(device.serial); const group = el('div', undefined, 'device-setting'); group.append(el('h3', device.data.description || 'Thermostat'));
     renderHeatingSettings(group, device, options);
     group.append(el('h4', 'Apple Home temperature display'));
-    toggle(group, 'Show climate rule temperature in Apple Home', 'Off by default. While a temperature rule controls this thermostat, show its selected-sensor temperature and desired room target. Apple Home target changes set that desired temperature directly. When the rule is paused or unavailable, the tile shows Nest’s actual readings and target. Save to apply.', options.homeKitRoomTemperature === true, (value) => { deviceOptions(device.serial, true).homeKitRoomTemperature = value; });
+    toggle(group, 'Show climate rule temperature in Apple Home', 'Off by default. While a Follow-mode rule controls this thermostat, show its selected-sensor temperature and room target. Apple Home changes set that room target directly. Fixed rules, paused rules and unavailable rules show Nest’s actual readings and target. A direct Apple Home target change pauses a fixed rule. Save to apply.', options.homeKitRoomTemperature === true, (value) => { deviceOptions(device.serial, true).homeKitRoomTemperature = value; });
     group.append(el('h4', 'Apple Home features · restart to apply'));
     toggle(group, 'Eco switch', 'A dedicated Eco control in Apple Home.', options.ecoSwitch ?? device.data.ecoSwitch, (value) => { deviceOptions(device.serial, true).ecoSwitch = value; });
     toggle(group, 'Separate humidity sensor', 'Show humidity as its own Apple Home sensor.', options.humiditySensor ?? device.data.humiditySensor, (value) => { deviceOptions(device.serial, true).humiditySensor = value; });
@@ -1518,7 +1526,7 @@ function newRule() {
   if (rules().length >= 32) { toast('Use at most 32 rules per category.'); return; }
   const rule = { id: crypto.randomUUID(), kind: state.ruleKind, enabled: false, sourceIds: [],
     name: state.ruleKind === 'temperature' ? 'New temperature group' : state.ruleKind === 'presence' ? 'Home presence' : 'Room fan comfort' };
-  if (state.ruleKind === 'temperature') { rule.aggregation = 'average'; rule.desiredTemperature = 21; rule.manualTargetBehavior = 'follow'; if (thermostats()[0]) rule.thermostatId = thermostats()[0].serial; }
+  if (state.ruleKind === 'temperature') { rule.aggregation = 'average'; rule.targetMode = 'follow'; rule.manualTargetBehavior = 'follow'; if (thermostats()[0]) rule.thermostatId = thermostats()[0].serial; }
   else if (state.ruleKind === 'presence') { rule.logic = 'any'; rule.holdMinutes = 10; rule.awayDelayMinutes = 20; const home = sources().find((source) => source.provider === 'nest' && source.kind === 'occupancy'); if (home) rule.sourceIds = [home.id]; }
   else { rule.targetIds = []; rule.action = 'temperature'; rule.speedMode = 'last'; rule.priority = 0; rule.threshold = 24; rule.hysteresis = 1; if (thermostats()[0]) rule.thermostatId = thermostats()[0].serial; }
   const fanItems = state.ruleKind !== 'presence' ? orderedFanRules() : null;
@@ -1583,7 +1591,8 @@ function ruleFieldHelp(title, rule) {
     case 'Thermostat': return rule.kind === 'fan'
       ? 'Watch this thermostat for active heating or cooling. Selecting Heat or Cool mode alone does not start the fans; the equipment must actually be running. This rule does not switch the HVAC system on.'
       : 'Choose the Nest thermostat whose heating target this group adjusts. Its own temperature counts toward the group only if you also select it under Temperature sources.';
-    case 'Desired room temperature': return 'The temperature you want the selected rooms to reach. Saving a changed value uses this exact room target and clears a temporary adjustment. Nest’s displayed target may differ because the group compensates for room readings. Resume uses this saved target.';
+    case 'Room target mode': return 'Follow starts with the confirmed thermostat target, or retains the current room target when switching an active rule. Confirmed schedules replace that room target; manual thermostat increases and decreases move it by the same amount. Fixed maintains the room target saved here. Learning and automatic application pause while a fixed rule is selected, and Nest Auto-Schedule is turned off. Existing Nest entries remain stored.';
+    case 'Fixed room temperature': return 'The temperature the selected rooms should maintain while this rule controls heating. Nest’s target may differ because of sensor compensation. Schedules do not replace this room target. Edit this field to change it; a direct Nest or Apple Home target change pauses the rule until Resume.';
     case 'Pause after a manual Nest target change': return 'Off by default: raising or lowering the physical Nest or Google app target moves the desired room temperature by the same amount and keeps the group active. Turn on to pause until Resume instead. Apple Home follows this policy unless Show climate rule temperature in Apple Home is enabled; then its target directly sets the desired room temperature. Temporary adjustments end at the next confirmed Nest schedule target. Eco, Off and other mode or sensor changes still pause control.';
     case 'Combine readings': return 'Equal average gives each selected temperature sensor the same weight. One selected sensor uses just that sensor and requires exactly one selection. Missing or stale selected readings pause automatic heating adjustments.';
     case 'Maximum target adjustment': return 'Limits how far the heating target sent to Nest can differ from your desired room temperature, in either direction. With this draft, the limit is ±' + formatDifference(rule.maximumOffset ?? 1.5) + '. Nest targets also stay within the supported heating range.';
@@ -1684,13 +1693,26 @@ function renderRuleEditor() {
   });
   toggle(host, 'Enable automatic execution', rule.kind === 'presence' ? 'After saving, this rule publishes its combined Home/Away state as a separate Apple Home occupancy sensor. It does not change Google’s Home/Away or Eco settings.' : 'After saving, this rule can control the selected equipment. You can pause it below. Previously active rules continue after restart checks unless Pause after bridge restart is enabled. Rules you pause stay paused.', rule.enabled, (value) => { rule.enabled = value; renderRules(); }, () => ruleFieldHelp('Enable automatic execution', rule));
   if (rule.kind === 'temperature') {
-    const target = editorSection(host, '01', 'Choose the room target', 'Choose the thermostat this rule will control and the temperature you want the selected rooms to reach.');
-    const fields = el('div', undefined, 'form-grid'); thermostatSelect(fields, rule); temperatureField(fields, 'Desired room temperature', rule.desiredTemperature ?? 21, (value) => { rule.desiredTemperature = value; }, { min: rule.enabled ? 9 : 5, max: rule.enabled ? 32 : 35 }); target.append(fields);
+    const fixed = temperatureTargetMode(rule) === 'fixed';
+    const target = editorSection(host, '01', 'Choose the room target', 'Choose the thermostat and how this rule obtains its room target. Both modes use your selected temperature sources.');
+    const fields = el('div', undefined, 'form-grid'); thermostatSelect(fields, rule);
+    ruleInputField(fields, 'Room target mode', temperatureTargetMode(rule), (value) => {
+      const current = state.status.automation?.rules?.find((entry) => entry.id === rule.id);
+      rule.targetMode = value;
+      if (value === 'fixed') rule.desiredTemperature = current?.desiredTemperature ?? rule.desiredTemperature ?? 21;
+      else delete rule.desiredTemperature;
+      renderRuleEditor();
+    }, { choices: [['follow', 'Follow thermostat and schedule'], ['fixed', 'Maintain fixed room temperature']] });
+    if (fixed) temperatureField(fields, 'Fixed room temperature', rule.desiredTemperature ?? 21, (value) => { rule.desiredTemperature = value; }, { min: rule.enabled ? 9 : 5, max: rule.enabled ? 32 : 35 });
+    target.append(fields);
+    target.append(el('p', fixed ? 'While this rule is selected, room-preference learning and automatic application are paused, and Nest Auto-Schedule is turned off. Saved learning preferences resume when this rule is no longer selected. Nest Auto-Schedule stays off until you enable it. Existing weekly entries are kept; they do not change the fixed room target.' :
+      'Starts from the confirmed thermostat target, or retains the current room target when switching an active rule. Confirmed Nest schedule targets become room targets. Manual increases and decreases move the room target by the same amount. Nest’s compensated target can differ from the room target.', 'small-note'));
     const inputs = editorSection(host, '02', 'Choose your temperature sources', 'Only selected readings count toward the room average. Include the controlled thermostat here if you want its temperature counted; you can also use only other room sensors. Automatic control requires Heat mode, Eco off and Nest’s built-in control sensor.');
     ruleInputField(inputs, 'Combine readings', rule.aggregation || 'average', (value) => { rule.aggregation = value; }, { choices: [['average', 'Equal average of selected sensors'], ['single', 'One selected sensor']] }); picker(inputs, rule, 'sourceIds', ['temperature']);
-    const limits = editorSection(host, '03', 'Limit thermostat adjustments', 'The desired room temperature stays separate from Nest’s adjusted target. Choose how manual Nest target changes affect the group. A confirmed scheduled target becomes the new room target. If Homebridge stops or loses its connection, Nest may retain the last bounded target.');
+    const limits = editorSection(host, '03', 'Limit thermostat adjustments', 'The room target stays separate from Nest’s adjusted target. If Homebridge stops or loses its connection, Nest may retain the last bounded target.');
     toggle(limits, 'Require Resume after Eco', 'Off temporarily suspends temperature control during Eco and resumes after Eco ends and fresh readings are available. On keeps control paused until you press Resume.', rule.ecoBehavior === 'pause', (value) => { rule.ecoBehavior = value ? 'pause' : 'suspend'; });
-    toggle(limits, 'Pause after a manual Nest target change', 'Off keeps the selected sensor group active and adjusts its desired room temperature by the same increase or decrease. On pauses all temperature groups for this thermostat until you Resume automatic control.', rule.manualTargetBehavior === 'pause', (value) => { rule.manualTargetBehavior = value ? 'pause' : 'follow'; }, () => ruleFieldHelp('Pause after a manual Nest target change', rule));
+    if (fixed) limits.append(el('p', 'Direct Nest or Apple Home target changes pause this fixed rule so your manual choice takes priority. Resume restores the fixed room target. Change the fixed value in this rule.', 'small-note'));
+    else toggle(limits, 'Pause after a manual Nest target change', 'Off keeps the selected sensor group active and adjusts its desired room temperature by the same increase or decrease. On pauses all temperature groups for this thermostat until you Resume automatic control.', rule.manualTargetBehavior === 'pause', (value) => { rule.manualTargetBehavior = value ? 'pause' : 'follow'; }, () => ruleFieldHelp('Pause after a manual Nest target change', rule));
     const tuningLink = el('a', 'Review heating response & tuning in Settings', 'small-note'); tuningLink.href = '#settings'; limits.append(tuningLink);
     temperatureField(limits, 'Maximum target adjustment', rule.maximumOffset ?? 1.5, (value) => { rule.maximumOffset = value; }, { min: 0, max: 3, difference: true });
     ruleInputField(limits, 'Minimum update interval (minutes)', rule.minimumIntervalMinutes ?? 5, (value) => { rule.minimumIntervalMinutes = value; }, { type: 'number', min: 1, max: 60, step: 1 });
@@ -1938,7 +1960,8 @@ function renderRuleRuntime(rule) {
   if (runtime.pendingRestorations) host.append(el('p', 'Some owned settings are waiting to be restored. Check equipment connectivity.'));
   host.append(el('strong', current?.phase || 'Not saved'), el('p', current?.reason || 'Save this rule to apply its settings.'));
   occupancyEvidence(host, current?.occupancyCondition);
-  if (current?.kind === 'temperature' && Number.isFinite(current?.nestTarget)) host.append(el('p', 'Desired room temperature: ' + formatTemp(current.desiredTemperature) + ' · Reported Nest target: ' + formatTemp(current.nestTarget)));
+  if (current?.kind === 'temperature') host.append(el('p', temperatureTargetLabel(current)));
+  if (current?.kind === 'temperature' && Number.isFinite(current?.nestTarget)) host.append(el('p', 'Current room target: ' + formatTemp(current.desiredTemperature) + ' · Reported Nest target: ' + formatTemp(current.nestTarget)));
   if (current?.kind === 'temperature' && Number.isFinite(current.lastAction?.value)) host.append(el('p', 'Last requested Nest target: ' + formatTemp(current.lastAction.value)));
   if (Number.isFinite(current?.nestUpdatedAt)) host.append(el('p', 'Last Nest device update: ' + new Date(current.nestUpdatedAt).toLocaleTimeString()));
   renderHeatingFeedback(host, current);
@@ -1947,7 +1970,8 @@ function renderRuleRuntime(rule) {
   if (current?.kind === 'temperature' && current.targetSource === 'schedule') host.append(el('p', current.paused ?
     'Retained schedule room target. Automatic control is paused.' : current.feedback ?
       'Retained schedule room target while awaiting Nest feedback.' : 'Following Nest’s scheduled room temperature.'));
-  if (current?.kind === 'temperature' && current.targetSource && current.targetSource !== 'rule') host.append(el('p', 'Saved rule target: ' + formatTemp(current.savedDesiredTemperature) + '. Use the saved target to end this adjustment.'));
+  if (current?.kind === 'temperature' && current.targetMode === 'fixed') host.append(el('p', 'Learning and automatic application pause while this rule is selected. Nest Auto-Schedule must be off. Weekly schedule entries do not replace the fixed room target.'));
+  if (rule.targetMode === undefined && current?.kind === 'temperature' && current.targetSource && current.targetSource !== 'rule' && Number.isFinite(current.savedDesiredTemperature)) host.append(el('p', 'Starting room target: ' + formatTemp(current.savedDesiredTemperature) + '. Use the saved target to end this adjustment.'));
   for (const fan of current?.fanSpeeds || []) host.append(el('p', fan.name + ': current ' + (Number.isFinite(fan.currentSpeed) ? fan.currentSpeed + '%' : 'unavailable') + ' · requested ' + (Number.isFinite(fan.proposedSpeed) ? fan.proposedSpeed + '%' : 'unsupported') + ' · cap ' + fan.maximumSpeed + '%'));
   for (const fan of current?.fanAssignments || []) host.append(el('p', fan.name + ': ' + (fan.override ?
     manualFanHoldText(fan.manualHold) || 'Suspended · ' + fan.override : fan.controller ? 'Controlling rule: ' + fan.controller : 'No matching rule')));
@@ -1967,7 +1991,7 @@ function renderRuleRuntime(rule) {
     for (const [label, action] of [[current.paused ? 'Resume automatic control' : rule.kind === 'temperature' ? 'Pause thermostat automation' : 'Pause rule', current.paused ? 'resume' : 'pause'], ...(rule.kind === 'presence' ? [['Force Home · 1 hour', 'home'], ['Force Away · 1 hour', 'away'], ['Resume automatic presence', 'resume']] : [])]) {
       const item = button(label, () => ruleCommand(rule.id, action), 'button secondary'); item.disabled = state.dirty; actions.append(item);
     }
-    if (rule.kind === 'temperature' && !current.paused && ['manual', 'schedule'].includes(current.targetSource)) {
+    if (rule.kind === 'temperature' && rule.targetMode === undefined && !current.paused && ['manual', 'schedule'].includes(current.targetSource)) {
       const reset = button('Use saved room target', () => ruleCommand(rule.id, 'resetTarget'));
       reset.disabled = state.dirty || Boolean(current.feedback) || ['updating', 'recovering'].includes(current.temperatureControl); actions.append(reset);
     }
@@ -2077,8 +2101,11 @@ function renderRulePreview() {
     if (rule.aggregation === 'single' && chosen.length > 1) { headline = 'Choose one sensor'; detail = 'A single-source group needs one selected sensor. Choose equal average to combine rooms.'; }
     else {
       const thermostat = thermostats().find((device) => device.serial === rule.thermostatId);
-      const preview = previewGroup({ sources: all, selected: rule.sourceIds, desired: rule.desiredTemperature ?? 21, thermostat });
-      if (Number.isFinite(preview.roomTemperature)) { headline = formatTemp(preview.roomTemperature); detail = chosen.length + ' source' + (chosen.length === 1 ? '' : 's') + ' · desired ' + formatTemp(rule.desiredTemperature ?? 21) + '. ' + preview.reason; }
+      const current = state.status.automation?.rules?.find((entry) => entry.id === rule.id);
+      const desired = temperatureTargetMode(rule) === 'fixed' ? rule.desiredTemperature :
+        current?.desiredTemperature ?? thermostat?.data.target_temperature_low ?? thermostat?.data.target_temperature;
+      const preview = previewGroup({ sources: all, selected: rule.sourceIds, desired, thermostat });
+      if (Number.isFinite(preview.roomTemperature)) { headline = formatTemp(preview.roomTemperature); detail = chosen.length + ' source' + (chosen.length === 1 ? '' : 's') + ' · ' + temperatureTargetLabel(rule) + ' · room target ' + formatTemp(desired) + '. ' + preview.reason; }
       else { headline = preview.state === 'empty' ? 'Choose your inputs' : 'Waiting for reliable readings'; detail = preview.reason; }
     }
   } else if (rule.kind === 'presence') {

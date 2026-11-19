@@ -816,3 +816,94 @@ test('new preference fields are validated while legacy records retain manual app
   assert.equal(manager.snapshot('test').autoApply, false);
   await assert.rejects(manager.action({ serial: 'test', action: 'apply', expected: manager.snapshot('test').expected }), /Off/);
 });
+
+test('fixed rule pauses learning and automatic application without changing saved preferences', async (t) => {
+  const f = await fixture(t);
+  learnedChoices(f);
+  f.data.native_schedules.autoSchedule = false;
+  const record = f.manager.record('test');
+  record.learning = true;
+  record.autoApply = true;
+  let fixed = true;
+  f.dashboard.automation = { temperaturePolicy: () => fixed ? { id: 'rooms', name: 'Room average', targetMode: 'fixed' } : null };
+  let model = f.manager.snapshot('test');
+  assert.equal(model.learningPaused, true);
+  assert.equal(model.learning, true);
+  assert.equal(model.autoApply, true);
+  assert.match(model.autoApplyMessage, /Paused by fixed-temperature rule/);
+  const count = record.events.length;
+  await f.manager.observe('test', 24, 'room');
+  await f.manager.observe('test', 24, 'manual');
+  await f.manager.applyLearned();
+  assert.equal(record.events.length, count);
+  assert.equal(f.calls.length, 0);
+  for (const action of ['learning', 'autoApply', 'auto']) {
+    await assert.rejects(f.manager.action(f.payload(action, { value: true,
+      confirmation: action === 'auto' ? 'enable-nest-learning' : 'enable-auto-apply-learning' })), /fixed-temperature rule/);
+  }
+  await assert.rejects(f.manager.action(f.payload('approve', { id: model.suggestions[0].id })), /fixed-temperature rule/);
+  await f.manager.persist();
+  const restarted = new NestSchedules(f.dashboard, f.manager.now);
+  await restarted.start();
+  assert.equal(restarted.snapshot('test').learningPaused, true);
+  assert.equal(restarted.snapshot('test').autoApply, true);
+  await restarted.applyLearned();
+  assert.equal(f.calls.length, 0);
+  fixed = false;
+  model = restarted.snapshot('test');
+  assert.equal(model.learningPaused, false);
+  await restarted.applyLearned();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0][1].temperature_schedules.heat[0].heat, 22);
+});
+
+test('fixed rule overrides explicit Nest learning permission and still requires confirmed Off', async (t) => {
+  const f = await fixture(t);
+  f.manager.record('test').allowNestLearning = true;
+  f.dashboard.automation = { temperaturePolicy: () => ({ id: 'rooms', name: 'Fixed', targetMode: 'fixed' }) };
+  assert.match(await f.manager.ensureRulePolicy('test', true), /Waiting/);
+  assert.equal(f.calls.length, 1);
+  assert.deepEqual(f.calls[0][1], { schedule_learning_enabled: false });
+  await f.manager.ensureRulePolicy('test', true);
+  assert.equal(f.calls.length, 1);
+  f.data.native_schedules.autoSchedule = false;
+  assert.equal(await f.manager.ensureRulePolicy('test', true), null);
+  assert.equal(f.manager.snapshot('test').learningPaused, true);
+  assert.equal(f.manager.snapshot('test').pending, null);
+  assert.equal(f.data.native_schedules.modes.heat.length, 1);
+});
+
+test('queued Nest learning and approved schedule writes cannot bypass a newly selected fixed rule', async (t) => {
+  for (const action of ['auto', 'approve', 'apply']) {
+    const f = await fixture(t);
+    learnedChoices(f);
+    f.data.native_schedules.autoSchedule = false;
+    const record = f.manager.record('test');
+    record.autoApply = true;
+    record.learning = true;
+    let fixed = false;
+    f.dashboard.automation = { temperaturePolicy: () => fixed ? { id: 'fixed', targetMode: 'fixed' } : null };
+    let guarded;
+    f.dashboard.command = async (_id, _values, origin) => {
+      fixed = true;
+      guarded = origin.guard();
+      throw new Error('Fixture queue cancelled');
+    };
+    await assert.rejects(f.manager.action(f.payload(action, { value: true, confirmation: 'enable-nest-learning',
+      id: f.manager.snapshot('test').suggestions[0].id })));
+    assert.equal(guarded, false);
+    assert.equal(f.manager.snapshot('test').learningPaused, true);
+    assert.ok(f.manager.snapshot('test').pending, 'Uncertain request remains visible for review');
+  }
+});
+
+test('saved learning options can be turned off during a fixed rule and remain off afterward', async (t) => {
+  const f = await fixture(t);
+  f.manager.record('test').autoApply = true;
+  f.dashboard.automation = { temperaturePolicy: () => ({ targetMode: 'fixed', name: 'Fixed' }) };
+  await f.manager.action(f.payload('autoApply', { value: false }));
+  await f.manager.action(f.payload('learning', { value: false }));
+  delete f.dashboard.automation;
+  assert.equal(f.manager.snapshot('test').learning, false);
+  assert.equal(f.manager.snapshot('test').autoApply, false);
+});

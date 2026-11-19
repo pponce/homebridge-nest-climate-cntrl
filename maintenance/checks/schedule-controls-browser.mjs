@@ -14,7 +14,10 @@ const browser=await chromium.launch({headless:true, executablePath:process.env.C
 try{
  const page=await browser.newPage({viewport:{width:390,height:844}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('http://127.0.0.1:'+server.address().port);
- await page.getByText('Temperature schedule · Nest Auto-Schedule off',{exact:true}).click();
+ assert.equal(await page.getByText('Nest Auto-Schedule · Off',{exact:true}).isVisible(),true);
+ assert.equal(await page.getByText('Plugin learning · On',{exact:true}).isVisible(),true);
+ assert.equal(await page.getByText('Plugin auto-apply · Off',{exact:true}).isVisible(),true);
+ await page.getByText('Temperature schedule',{exact:true}).click();
  await page.getByRole('button',{name:'Turn Nest Auto-Schedule on',exact:true}).click();
  await page.getByRole('alertdialog').waitFor(); assert.equal(await page.evaluate(()=>requests.length),0);
  await page.getByRole('button',{name:'Confirm',exact:true}).click();
@@ -67,5 +70,20 @@ try{
  await page.evaluate(()=>{device.scheduleControls.learning=false;device.scheduleControls.autoApply=false;render()});
  assert.equal(await applyLearning.isEnabled(),false);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+ await page.evaluate(()=>{device.scheduleControls.learning=true;device.scheduleControls.autoApply=true;device.scheduleControls.autoSchedule=false;device.scheduleControls.learningPaused=true;device.scheduleControls.learningMessage='Paused by fixed-temperature rule “Rooms”.';render()});
+ assert.equal(await page.getByLabel('Learn room-temperature preferences',{exact:true}).isChecked(),true);
+ assert.equal(await page.getByLabel('Learn room-temperature preferences',{exact:true}).isEnabled(),false);
+ assert.equal(await applyLearning.isChecked(),true);assert.equal(await applyLearning.isEnabled(),false);
+ assert.equal(await page.getByRole('button',{name:'Turn Nest Auto-Schedule on',exact:true}).isEnabled(),false);
+ await page.getByText('Temperature schedule',{exact:true}).click();
+ assert.equal(await page.getByText('Plugin learning · Paused',{exact:true}).isVisible(),true);
+ assert.equal(await page.getByText('Plugin auto-apply · Paused',{exact:true}).isVisible(),true);
+ assert.equal(await page.getByLabel('Learn room-temperature preferences',{exact:true}).isVisible(),false);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+ await page.screenshot({path:'maintenance/checks/schedule-controls-collapsed-mobile.png',fullPage:true});
+ await page.evaluate(()=>{device.scheduleControls.learningPaused=false;device.scheduleControls.autoApplyStatus='waiting';render()});
+ assert.equal(await page.getByText('Plugin auto-apply · Waiting',{exact:true}).isVisible(),true);
+ await page.evaluate(()=>{device.scheduleControls.autoApplyStatus='attention';render()});
+ assert.equal(await page.getByText('Plugin auto-apply · Needs attention',{exact:true}).isVisible(),true);
  assert.deepEqual(errors,[]);console.log('PASS: mobile toggle warning, confirmed writes, Fahrenheit editor, draft preservation, clear cancellation, unsupported mode controls, no horizontal overflow.');
 }finally{await browser.close();await new Promise(r=>server.close(r));}

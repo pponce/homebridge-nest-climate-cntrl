@@ -14,7 +14,7 @@ export async function checkSourceRefresh(browser, base) {
   page.on('pageerror', (error) => errors.push(error.message));
   const config = { name: 'Fixture', options: {}, devices: [], rules: {
     temperature: [{ id: 'group', kind: 'temperature', name: 'Room group', enabled: false,
-      thermostatId: 'T', sourceIds: ['room'], aggregation: 'average', desiredTemperature: 22 }],
+      thermostatId: 'T', sourceIds: ['room'], aggregation: 'average', targetMode: 'fixed', desiredTemperature: 22 }],
     fans: [], occupancy: [],
   } };
   await page.clock.install({ time: now });
@@ -57,7 +57,7 @@ export async function checkSourceRefresh(browser, base) {
     await page.goto(base + '/#rules');
     await waitReading('20.0°C');
     await idle();
-    const target = page.getByRole('spinbutton', { name: 'Desired room temperature (°C)', exact: true });
+    const target = page.getByRole('spinbutton', { name: 'Fixed room temperature (°C)', exact: true });
     const search = page.getByRole('searchbox', { name: 'Find rule inputs' });
     await target.fill('23.5');
     await search.fill('Room fan');
@@ -132,3 +132,4 @@ export async function checkSourceRefresh(browser, base) {
     console.log('PASS source refresh: four polling cycles, draft and focus preservation, source failure/recovery, hidden-tab pause/resume, manual refresh, request deduplication, no writes and logout');
   } finally { await page.close(); }
 }
+

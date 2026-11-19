@@ -38,7 +38,7 @@ export function temperatureControlView(device, snapshot, live = true) {
     snapshot.devices.find((entry) => entry.type === 'TemperatureSensor' && entry.id === id)?.data?.description ||
       'Nest room sensor (name unavailable)';
   const labels = {
-    active: 'Active', interval: 'Active · between updates', updating: 'Confirming target', recovering: 'Recovering feedback', restoring: 'Restoring Nest control',
+    active: 'Plugin Temp Rule', interval: 'Plugin Temp Rule', updating: 'Confirming target', recovering: 'Recovering feedback', restoring: 'Restoring Nest control',
     idle: 'Occupancy not met', scheduled: 'Scheduled', standby: 'Standby', waiting: 'Waiting', paused: 'Paused', disabled: 'Disabled', unavailable: 'Status unavailable',
   };
   const automation = snapshot.automation;
@@ -48,7 +48,7 @@ export function temperatureControlView(device, snapshot, live = true) {
       const status = !live || !engineAvailable ? 'unavailable' : rule.temperatureControl === 'restoring' ? 'restoring' :
         !rule.enabled ? 'disabled' : rule.paused ? 'paused' : Object.hasOwn(labels, rule.temperatureControl) ? rule.temperatureControl : 'unavailable';
       return { id: rule.id, name: rule.name, status, label: labels[status], reason: rule.reason,
-        tone: ['active', 'interval'].includes(status) ? 'good' : ['paused', 'disabled'].includes(status) ? 'neutral' : 'warn' };
+        tone: status === 'active' ? 'good' : ['paused', 'disabled'].includes(status) ? 'neutral' : 'warn' };
     });
   const applied = rules.filter((rule) => ['active', 'interval', 'updating', 'recovering', 'restoring'].includes(rule.status));
   const uncertain = !live || !engineAvailable || applied.length > 1 || rules.some((rule) => rule.status === 'unavailable');
@@ -73,6 +73,7 @@ export function temperatureControlView(device, snapshot, live = true) {
     detail = controller.status === 'restoring' ? 'The rule is returning its previous heating target to Nest.' :
       controller.status === 'recovering' ? 'Adjustments are on hold while Nest feedback recovers. The rule resumes automatically after confirmation.' :
       controller.status === 'updating' ? 'Waiting for Nest to confirm the rule’s requested heating target.' :
+      controller.status === 'interval' ? 'The rule is still controlling the room target. It is waiting for the minimum update interval before adjusting Nest again.' :
         'This rule adjusts the heating target using its selected temperatures. Nest uses ' + name(selected) + '.';
   } else if (selected === null) {
     detail = 'Nest has not reported a recognized temperature-sensor selection.';
@@ -173,6 +174,13 @@ export function nextSetpoint(entries, timeZone, now = new Date()) {
 }
 
 // Describe the selected thermostat using reported mode and running-rule feedback.
+export const temperatureTargetMode = (rule) => rule.targetMode === 'fixed' ? 'fixed' : 'follow';
+export const temperatureTargetLabel = (rule) => temperatureTargetMode(rule) === 'fixed' ?
+  'Maintain fixed room temperature' : 'Follow thermostat and schedule';
+export const desiredRoomTarget = (state) => temperatureTargetMode(state.rule) === 'fixed' ? state.rule.desiredTemperature :
+  state.roomTarget?.value ?? (state.rule.targetMode === undefined ? state.rule.desiredTemperature : undefined);
+export const roomTargetSource = (state) => temperatureTargetMode(state.rule) === 'fixed' ? 'fixed' : state.roomTarget?.source ?? 'rule';
+
 export function scheduleOverview(device, snapshot, options = {}, live = true, now = new Date()) {
   const data = device?.data || {};
   const normalizeMode = (value) => ['range', 'heatcool'].includes(value?.toLowerCase()) ? 'range' : value?.toLowerCase();
@@ -209,7 +217,8 @@ export function scheduleOverview(device, snapshot, options = {}, live = true, no
     title = 'Climate rule · ' + controller.name; label = controller.label; tone = controller.tone;
     runtime = snapshot.automation.rules.find((rule) => rule.id === controller.id);
     detail = controller.status === 'restoring' ? 'This rule is returning its previous heating target to Nest; it is not applying a new room target.' :
-      'If this rule is still controlling heating at the scheduled change, the confirmed Nest heating target becomes its desired room temperature. ' +
+      (runtime.targetMode === 'fixed' ? 'This rule maintains its fixed room temperature. Nest schedule entries do not change that room target. ' :
+      'If this rule is still controlling heating at the scheduled change, the confirmed Nest heating target becomes its desired room temperature. ') +
       'It then adjusts Nest’s target using the selected sensor readings, adjustment limit and minimum update interval. Nest’s target may differ from the room target.';
     if (['updating', 'recovering'].includes(controller.status)) detail = (runtime.reason || 'Waiting for Nest to confirm a target.') + ' ' + detail;
   } else if (view.rules.length) {
@@ -221,4 +230,5 @@ export function scheduleOverview(device, snapshot, options = {}, live = true, no
   return { name: data.description || (device ? 'Thermostat' : 'No thermostat selected'), modeLabel, mode, zone, points, empty,
     eco: data.eco_mode === true, live, control: { title, label, tone, detail, rules: view?.rules || [], runtime } };
 }
+
 

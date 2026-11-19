@@ -423,14 +423,25 @@ export class NestSchedules {
       lastResponse: record.lastResponse ?? null,
       message: this.loadError || record.message || '',
       busy: this.busy.has(serial),
+      temperatureRule: this.dashboard.automation?.temperaturePolicy?.(serial) ?? null,
     };
-    model.autoApplyMessage = this.autoApplyBlock(serial, model) ||
+    model.learningPaused = model.temperatureRule?.targetMode === 'fixed';
+    model.learningMessage = model.learningPaused ?
+      'Paused by fixed-temperature rule “' + model.temperatureRule.name + '”. ' +
+      'Learning and automatic application resume with your saved preferences when this rule is no longer selected.' : '';
+    const blocked = this.autoApplyBlock(serial, model);
+    model.autoApplyStatus = !model.autoApply ? 'off' : model.learningPaused ? 'paused' :
+      this.loadError || record.autoApplyError || record.pending?.failure ? 'attention' : blocked ? 'waiting' : 'on';
+    model.autoApplyMessage = blocked ||
       'On. Qualifying heating suggestions are saved to Nest automatically.';
     return model;
   }
 
   autoApplyBlock(serial, model, policyOnly = false) {
     const record = this.record(serial);
+    if (model.learningPaused) {
+      return model.learningMessage;
+    }
     if (!model.autoApply) {
       return 'Off. Review and approve each suggestion before it is saved to Nest.';
     }
@@ -504,7 +515,7 @@ export class NestSchedules {
   }
 
   async observe(serial, value, source = 'room') {
-    if (this.loadError || !temperature(value) || !['room', 'manual'].includes(source)) {
+    if (this.loadError || !temperature(value) || !['room', 'manual'].includes(source) || this.fixedRule(serial)) {
       return;
     }
     const record = this.record(serial);
@@ -522,12 +533,16 @@ export class NestSchedules {
     await this.persist();
   }
 
-  async ensureRulePolicy(serial) {
+  fixedRule(serial) {
+    return this.dashboard.automation?.temperaturePolicy?.(serial)?.targetMode === 'fixed';
+  }
+
+  async ensureRulePolicy(serial, fixed = false) {
     const model = this.snapshot(serial);
     if (this.loadError) {
       return this.loadError;
     }
-    if (model.allowNestLearning || model.autoSchedule === false) {
+    if ((!fixed && model.allowNestLearning) || model.autoSchedule === false) {
       return null;
     }
     // Models without a learning trait keep their existing control behavior, with an explicit tile notice.
@@ -553,7 +568,8 @@ export class NestSchedules {
         expected: model.expected,
       });
     } catch {
-      record.policyError =
+      record.policyError = fixed ?
+        'Auto-Schedule could not be disabled. Turn it off in the Nest app and refresh, or review the thermostat tile before retrying.' :
         'Auto-Schedule could not be disabled. Use the thermostat tile to retry or explicitly enable Nest learning.';
       record.message ||= record.policyError;
     }
@@ -582,6 +598,9 @@ export class NestSchedules {
     if (['learning', 'autoApply'].includes(action)) {
       if (typeof payload.value !== 'boolean') {
         throw new Error('Choose learning or automatic application on or off.');
+      }
+      if (payload.value && model.learningPaused) {
+        throw new Error(model.learningMessage);
       }
       if (action === 'autoApply' && payload.value &&
           (!model.learning || payload.confirmation !== 'enable-auto-apply-learning')) {
@@ -621,6 +640,10 @@ export class NestSchedules {
     }
     if (action === 'apply' && this.autoApplyBlock(serial, model)) {
       throw new Error(this.autoApplyBlock(serial, model));
+    }
+    if (model.learningPaused && (action === 'approve' || action === 'auto' && payload.value)) {
+      throw new Error('The fixed-temperature rule pauses learned schedule changes and requires Nest Auto-Schedule off. ' +
+        'Change or pause the rule first.');
     }
     if (action === 'acknowledge') {
       if (!model.connected || !model.pending || this.now() - model.pending.at <= 60000) {
@@ -751,8 +774,11 @@ export class NestSchedules {
       await this.persist();
       const guard = () => this.connected(serial) && (scopedSchedule ?
         hash([payload.mode, this.native(serial).modes[payload.mode]]) === payload.scheduleRevision :
-        hash(this.native(serial)) === expected) && ((!automaticPolicy && action !== 'apply') ||
+        hash(this.native(serial)) === expected) &&
+        (!(action === 'approve' || action === 'apply' || action === 'auto' && payload.value) || !this.fixedRule(serial)) &&
+        ((!automaticPolicy && action !== 'apply') ||
           (!this.stopped && record.autoApply === true && record.learning !== false && !record.autoApplyError &&
+            !this.fixedRule(serial) &&
             (automaticPolicy || (this.zone(serial) === model.zone && this.native(serial).autoSchedule === false))));
       const result = await this.dashboard.command(this.dashboard.devices.get(serial).id, values, {
         automation: true,

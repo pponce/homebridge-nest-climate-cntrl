@@ -1,4 +1,32 @@
 <!-- Modified by pponce for Nest Climate Cntrl; derived from Nest Accfactory. See NOTICE. -->
+## v0.6.12-beta.5
+
+**Choose how room targets follow thermostat changes, with clearer Overview controls.**
+
+### Temperature rules
+- Add **Room target mode** under **Climate rules → Temperature → your rule**. **Follow thermostat and schedule** starts with confirmed thermostat intent, follows confirmed schedule targets, and needs no fixed-temperature field. **Maintain fixed room temperature** maintains the value entered in **Fixed room temperature**.
+- Keep selected sensors, averaging, compensation limits, update intervals, priorities, occupancy conditions and time windows in both modes. Switching an active rule to Follow retains its room target rather than adopting an already compensated Nest target.
+- While a fixed rule is selected, pause plugin learning and automatic application without erasing their saved preferences. Request Nest Auto-Schedule off even after an explicit On override, and wait for reported confirmation before control. Prevent enabling Nest learning or applying learned entries while that fixed rule is selected.
+- Preserve existing weekly entries. Fixed rules keep their own room target when those entries run. Direct Nest or Apple Home target changes pause fixed rules; Resume restores the fixed target. Edit fixed targets in Climate rules. Eco suspension and automatic recovery preserve the fixed target.
+- Retain configuration compatibility for rules without an explicit mode, and preserve running room intent across restart and eligible rule handoffs.
+
+### Overview
+- Show the selected target mode and distinguish fixed room targets from scheduled or manual room targets in controller details and Coming up.
+- Match **Temperature schedule** to the bordered, collapsible **Temperature controlled by** section.
+- Label active control **Plugin Temp Rule** in green, or amber between updates with a description explaining the interval wait.
+- Keep separate **Nest Auto-Schedule**, **Plugin learning**, and **Plugin auto-apply** badges visible when collapsed. Show On in green, Off in muted red, and Paused, Waiting or Needs attention in amber; identify offline Nest state as last reported. Saved On preferences paused by a fixed rule show Paused.
+- Add a separate **Off · 0%** row to fan speed graphs. The reported-state marker shows Off even when the fan retains its last speed; running-speed curves and run conditions remain separate. Unknown feedback is not displayed as Off.
+- Retain the automatic Overview refresh when returning from Climate rules.
+
+### Validation and scope
+- Automated regression coverage checks target initialization, schedule confirmation, manual overrides, Eco recovery, restart, mode switches, rule handoffs, learning suspension/resumption, queued-write guards and configuration validation.
+- Browser checks cover both dashboard hosts, mode-specific fields, saving, Celsius/Fahrenheit input, paused controls, collapsed status badges and phone layouts. Release gates also check the supported Node/Homebridge matrix, package installation and publication helpers.
+- Complete physical-thermostat behavior still requires live validation. Automatic application remains opt-in. Nest Auto-Schedule off preserves weekly entries and is not automatically restored when a fixed rule ends.
+
+**Updating:** Reload the dashboard after installation. Open **Climate rules → Temperature → your rule → Room target mode**, choose a mode and save. Fixed mode reveals its temperature field and explains the learning changes before saving.
+
+This GitHub prerelease includes a checksummed package and npm publication helper for the **beta** channel; **latest** is unchanged.
+
 ## v0.6.12-beta.4
 
 **Optional automatic application of learned room-temperature preferences.**

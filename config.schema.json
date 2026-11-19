@@ -371,6 +371,12 @@
                                     "default": "suspend",
                                     "description": "Suspend resumes automatically after Eco ends. Pause requires Resume."
                                 },
+                                "targetMode": {
+                                    "type": "string",
+                                    "title": "Room target mode",
+                                    "enum": ["follow", "fixed"],
+                                    "description": "Follow thermostat and schedule uses the current room target and confirmed schedule changes. Maintain fixed room temperature uses desiredTemperature and pauses learning and automatic application while selected."
+                                },
                                 "manualTargetBehavior": {
                                     "type": "string",
                                     "enum": [
@@ -1237,6 +1243,9 @@
                             "key": "climateRuleDrafts.temperature[].ecoBehavior"
                         },
                         {
+                            "key": "climateRuleDrafts.temperature[].targetMode"
+                        },
+                        {
                             "key": "climateRuleDrafts.temperature[].manualTargetBehavior"
                         },
                         {
@@ -1379,4 +1388,5 @@
     ],
     "customUi": true
 }
+
 

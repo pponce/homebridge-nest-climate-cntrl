@@ -266,6 +266,9 @@ export class ClimateDashboard {
     }
     const rules = (automation?.rules ?? []).filter((rule) => rule.kind === 'temperature' && rule.thermostatId === serial);
     const room = this.automation?.roomControl?.(serial);
+    if (room?.targetMode === 'fixed') {
+      return unavailable('Maintain fixed room temperature is active. Edit its temperature in Climate rules.');
+    }
     if (!room && rules.some((rule) => rule.temperatureControl === 'restoring' || (rule.enabled && !rule.paused))) {
       return unavailable('The temperature rule is waiting for feedback. Review Climate rules before changing its target.');
     }

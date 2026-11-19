@@ -54,7 +54,7 @@ export async function checkScheduleOverview(browser, base, output) {
     assert.match(await page.locator('#schedule-preview').innerText(), /Thu · 20:30[\s\S]*Fri · 07:00[\s\S]*Mon · 06:45/);
     assert.match(await page.locator('#schedule-preview').innerText(), /Heat 68.9°F/);
     assert.doesNotMatch(await page.locator('#schedule-preview').innerText(), /Cool|89.6/);
-    assert.match(await page.locator('#schedule-control').innerText(), /Living room average[\s\S]*Active · between updates/);
+    assert.match(await page.locator('#schedule-control').innerText(), /Living room average[\s\S]*Plugin Temp Rule/);
     assert.match(await page.locator('#schedule-control').innerText(), /confirmed Nest heating target becomes its desired room temperature/);
     await navigate(page, 'Climate rules', false);
     control = 'paused';
@@ -63,7 +63,7 @@ export async function checkScheduleOverview(browser, base, output) {
     await navigate(page, 'Climate rules', false);
     control = 'interval';
     await navigate(page, 'Overview');
-    await page.locator('#schedule-control').getByText('Active · between updates', { exact: true }).waitFor();
+    await page.locator('#schedule-control').getByText('Plugin Temp Rule', { exact: true }).waitFor();
     await page.locator('.schedule-panel').screenshot({ path: path.join(output, 'schedule-active-desktop.png') });
     const chartHeight = async () => (await page.locator('#runtime-chart').boundingBox()).height;
     const before = await chartHeight();

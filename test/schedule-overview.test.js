@@ -121,3 +121,14 @@ test('unknown or conflicting engine feedback cannot present a rule as the curren
   delete f.snapshot.automation;
   assert.equal(f.view().control.title, 'Control status unavailable');
 });
+
+
+test('fixed rule preview distinguishes stored Nest entries from the room target', () => {
+  const f = fixture();
+  f.rule.targetMode = 'fixed';
+  const view = f.view();
+  assert.match(view.control.detail, /maintains its fixed room temperature/);
+  assert.match(view.control.detail, /do not change that room target/);
+  assert.equal(view.control.runtime.desiredTemperature, 21);
+  assert.equal(view.points[0].targets[0].value, 20.5);
+});

@@ -53,7 +53,13 @@ test('applied rules remain distinguishable from feedback waits, restoration and 
     assert.equal(view.rules[0].status, status);
     if (['active', 'interval', 'updating', 'recovering', 'restoring'].includes(status)) {
       assert.equal(view.title, 'Climate rule · Room average');
-      assert.equal(view.tone === 'good', ['active', 'interval'].includes(status));
+      assert.equal(view.tone === 'good', status === 'active');
+      if (['active', 'interval'].includes(status)) {
+        assert.equal(view.label, 'Plugin Temp Rule');
+      }
+      if (status === 'interval') {
+        assert.match(view.detail, /still controlling.*minimum update interval/);
+      }
     } else {
       assert.equal(view.title, status === 'unavailable' ? 'Control status unavailable' : 'Thermostat sensor');
     }
@@ -86,4 +92,5 @@ test('missing selection, disconnection, engine failure and ambiguous controllers
   f.snapshot.automation.rules.push({ ...f.rule, id: 'conflict', temperatureControl: 'active' });
   assert.equal(f.view().title, 'Control status unavailable');
 });
+
 

@@ -12,8 +12,26 @@ export function renderScheduleControls(device, { unit, live, send, refresh }) {
   views.set(device.serial, view);
   const box = node('details', undefined, 'schedule-controls'); box.open = view.open;
   box.addEventListener('toggle', () => { view.open = box.open; });
-  box.append(node('summary', 'Temperature schedule · Nest Auto-Schedule ' +
-    (model.autoSchedule === null ? 'unavailable' : model.autoSchedule ? 'on' : 'off')));
+  const summary = node('summary');
+  const heading = node('span', undefined, 'controller-heading');
+  heading.append(node('strong', 'Temperature schedule', 'controller-name'));
+  const badges = node('span', undefined, 'schedule-badges');
+  const badge = (name, status, detail) => {
+    const tone = status === 'On' ? 'good' : status === 'Off' ? 'off' : status === 'Unavailable' ? 'neutral' : 'warn';
+    const item = node('span', name + ' · ' + status, 'status-pill ' + tone);
+    if (detail) item.title = detail;
+    badges.append(item);
+  };
+  badge('Nest Auto-Schedule', model.autoSchedule === null ? 'Unavailable' : model.autoSchedule ? 'On' : 'Off');
+  badge('Plugin learning', model.learning === false ? 'Off' : model.learningPaused ? 'Paused' : 'On', model.learningMessage);
+  badge('Plugin auto-apply', model.autoApply !== true ? 'Off' : model.learningPaused ? 'Paused' :
+    model.autoApplyStatus === 'attention' ? 'Needs attention' : model.autoApplyStatus === 'waiting' ? 'Waiting' : 'On', model.autoApplyMessage);
+  heading.append(badges);
+  if (!live || !model.connected) heading.append(node('small', 'Nest state last reported · offline'));
+  else if (model.pending) heading.append(node('small', 'Waiting for Nest confirmation'));
+  const chevron = node('span'); chevron.setAttribute('aria-hidden', 'true');
+  chevron.innerHTML = '<svg class="icon" viewBox="0 0 24 24"><path d="m6 10 6 6 6-6"/></svg>';
+  summary.append(heading, chevron); box.append(summary);
   const body = node('div', undefined, 'schedule-body'); box.append(body);
   const enabled = Boolean(live && model.connected && !model.busy && !view.busy && !model.pending);
   const button = (text, action, available = enabled) => {
@@ -34,23 +52,27 @@ export function renderScheduleControls(device, { unit, live, send, refresh }) {
     view.confirm = { message, payload, expected }; draw();
   };
   body.append(node('p', 'Schedule times use ' + (model.zone || 'an unknown Nest time zone') + '. Entries remain stored in Nest.', 'small-note'));
-  body.append(node('p', 'With a temperature rule, heating entries become desired room temperatures after Nest confirms them. The rule adjusts Nest’s target using the selected sensors.', 'small-note'));
+  body.append(node('p', model.learningPaused ?
+    'Maintain fixed room temperature is selected. Weekly entries remain in Nest, but do not replace the rule’s fixed room target. The rule adjusts Nest’s target using the selected sensors.' :
+    'In Follow thermostat and schedule mode, heating entries become room targets after Nest confirms them. The rule adjusts Nest’s target using the selected sensors.', 'small-note'));
   const auto = button('Turn Nest Auto-Schedule ' + (model.autoSchedule ? 'off' : 'on'), () => {
     if (model.autoSchedule) void submit({ action: 'auto', value: false });
     else confirm('Enable Nest Auto-Schedule? A room-temperature rule sends adjusted targets to Nest. Nest may learn those adjustments as temperature preferences and change your schedule. This override keeps Nest learning enabled while your rule runs and turns off automatic application of learned room preferences. Room-preference learning can stay on.',
       { action: 'auto', value: true, confirmation: 'enable-nest-learning' });
-  }, enabled && model.autoSchedule !== null);
+  }, enabled && model.autoSchedule !== null && (!model.learningPaused || model.autoSchedule === true));
   auto.setAttribute('aria-pressed', String(model.autoSchedule === true)); body.append(auto);
   if (model.autoSchedule === true) body.append(node('p',
     'Nest Auto-Schedule is on. Room-average compensation may be learned as a temperature preference and change Nest’s schedule.', 'schedule-warning'));
   body.append(node('p', model.autoSchedule === null ? 'This thermostat has not reported Auto-Schedule control. Check the Nest app.' :
-    'Temperature rules disable Nest Auto-Schedule by default. Turning it off preserves schedule entries. An explicit On choice overrides that default.', 'small-note'));
-  const learn = node('input'); learn.type = 'checkbox'; learn.checked = model.learning !== false; learn.disabled = !live || view.busy;
+    model.learningPaused ? 'The fixed-temperature rule requires Nest Auto-Schedule off. Change or pause that rule to enable Nest learning. Turning Auto-Schedule off preserves weekly entries.' :
+    'Temperature rules disable Nest Auto-Schedule by default. Turning it off preserves schedule entries. In Follow mode, an explicit On choice overrides that default.', 'small-note'));
+  if (model.learningPaused) body.append(node('p', model.learningMessage + ' Checked options show your saved preferences.', 'schedule-warning'));
+  const learn = node('input'); learn.type = 'checkbox'; learn.checked = model.learning !== false; learn.disabled = !live || view.busy || model.learningPaused;
   learn.addEventListener('change', () => void submit({ action: 'learning', value: learn.checked }));
   body.append(label('Learn room-temperature preferences', learn));
   body.append(node('p', 'Suggests heating entries from intentional room-target choices in this dashboard and Apple Home. Requires three similar choices on separate dates for the same weekday and half-hour. Nest Auto-Schedule changes, scheduled targets, compensation and Eco changes do not train this learner.', 'small-note'));
   const applyLearning = node('input'); applyLearning.type = 'checkbox'; applyLearning.checked = model.autoApply === true;
-  applyLearning.disabled = !live || view.busy || model.learning === false;
+  applyLearning.disabled = !live || view.busy || model.learning === false || model.learningPaused;
   applyLearning.addEventListener('change', () => {
     if (applyLearning.checked) confirm('Enable automatic application of learned preferences? This turns off Nest Auto-Schedule, Nest’s automatic schedule-learning feature. Existing schedule entries are kept. After Nest confirms Auto-Schedule is off, current and future qualifying heating suggestions will be saved without individual approval, replacing entries at the same weekday and time. Turning off learning also turns off automatic application.',
       { action: 'autoApply', value: true, confirmation: 'enable-auto-apply-learning' });
@@ -90,7 +112,8 @@ export function renderScheduleControls(device, { unit, live, send, refresh }) {
     const prompt = node('div', undefined, 'schedule-confirm'); prompt.setAttribute('role', 'alertdialog');
     prompt.setAttribute('aria-label', 'Confirm schedule change'); prompt.append(node('p', view.confirm.message));
     prompt.append(button('Confirm', () => void submit(view.confirm.payload, view.confirm.expected),
-      view.confirm.payload.action === 'autoApply' ? live && !view.busy && model.learning !== false : enabled));
+      view.confirm.payload.action === 'autoApply' ? live && !view.busy && model.learning !== false && !model.learningPaused :
+        enabled && (!model.learningPaused || !['approve', 'auto'].includes(view.confirm.payload.action) || view.confirm.payload.value === false)));
     prompt.append(button('Cancel', () => { view.confirm = null; draw(); }, !view.busy)); body.append(prompt);
   }
   const modes = Object.keys(model.modes);
@@ -146,7 +169,7 @@ export function renderScheduleControls(device, { unit, live, send, refresh }) {
       const item = node('div', undefined, 'schedule-suggestion');
       item.append(node('p', summary + ' · ' + suggestion.observations + ' observed dates'));
       item.append(button('Approve and save to Nest', () => confirm('Save ' + summary + ' to Nest’s heating schedule? An entry at that exact day and time will be replaced; other entries stay unchanged.',
-        { action: 'approve', id: suggestion.id }), enabled && !view.draft && Array.isArray(model.modes.heat)));
+        { action: 'approve', id: suggestion.id }), enabled && !view.draft && !model.learningPaused && Array.isArray(model.modes.heat)));
       item.append(button('Dismiss', () => void submit({ action: 'dismiss', id: suggestion.id }), live && !view.busy)); body.append(item);
     }
   } else body.append(node('p', 'No learning suggestions yet. Repeated intentional room-target choices build the evidence.', 'small-note'));

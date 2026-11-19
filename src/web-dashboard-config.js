@@ -112,6 +112,7 @@ export function validateRuleDrafts(value) {
         'action',
         'enabled',
         'desiredTemperature',
+        'targetMode',
         'manualTargetBehavior',
         'ecoBehavior',
         'maximumOffset',
@@ -135,6 +136,7 @@ export function validateRuleDrafts(value) {
       );
       known.add(rule.id);
       assert(kind !== 'presence' || rule.window === undefined, 'Time windows apply to temperature and fan rules.');
+      assert(kind === 'temperature' || rule.targetMode === undefined, 'Room target modes apply to temperature rules.');
       assert(!windowError(rule.window), windowError(rule.window));
       assert(!occupancyConditionError(rule.occupancyCondition, kind), occupancyConditionError(rule.occupancyCondition, kind));
       assert(!fanManualHoldError(rule.manualOverride, kind), fanManualHoldError(rule.manualOverride, kind));
@@ -157,6 +159,7 @@ export function validateRuleDrafts(value) {
       for (const [field, choices] of [
         ['aggregation', ['single', 'average']],
         ['manualTargetBehavior', ['follow', 'pause']],
+        ['targetMode', ['follow', 'fixed']],
         ['ecoBehavior', ['suspend', 'pause']],
         ['logic', ['any', 'all']],
         ['action', ['heating', 'cooling', 'temperature', speedAction]],
@@ -198,7 +201,8 @@ export function validateRuleDrafts(value) {
           assert(text(rule.thermostatId, 256) && sources.length > 0, 'Select a thermostat and temperature sources before enabling.');
           assert(rule.aggregation !== 'single' || sources.length === 1, 'Single-sensor control requires exactly one source.');
           assert(
-            Number.isFinite(rule.desiredTemperature) && rule.desiredTemperature >= 9 && rule.desiredTemperature <= 32,
+            rule.targetMode === 'follow' ||
+              Number.isFinite(rule.desiredTemperature) && rule.desiredTemperature >= 9 && rule.desiredTemperature <= 32,
             'Live heating targets must be between 9 and 32 °C (48.2–89.6 °F).',
           );
         } else if (kind === 'fan') {
@@ -494,5 +498,6 @@ export class WebDashboardConfig {
     return this.snapshot();
   }
 }
+
 
 

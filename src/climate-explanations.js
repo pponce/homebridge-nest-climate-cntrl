@@ -1,5 +1,6 @@
 import { fanManualHoldStatus } from './fan-manual-hold.js';
 import { supportedSpeed, mappedSpeed } from '../homebridge-ui/public/fan-speed.js';
+import { desiredRoomTarget, roomTargetSource } from '../homebridge-ui/public/climate-utils.js';
 
 const MINUTE = 60000;
 const finite = (value) => Number.isFinite(value) ? value : null;
@@ -80,15 +81,16 @@ export function explainRule(engine, state, heatingTarget) {
         override: engine.fanOverrides.get(id) ?? null, manualHold: fanManualHoldStatus(engine, id) };
     });
   } else {
-    const desired = state.roomTarget?.value ?? rule.desiredTemperature;
+    const desired = desiredRoomTarget(state);
     const physical = connected ? finite(device.data.physical_temperature) : null;
     const maximumOffset = rule.maximumOffset ?? 1.5;
     const rawOffset = physical !== null && report.average !== null ? physical - report.average : null;
     report.heating = { desired, physical, maximumOffset, rawOffset,
-      calculatedTarget: rawOffset !== null ? heatingTarget(desired, physical, report.average, maximumOffset,
+      calculatedTarget: rawOffset !== null && Number.isFinite(desired) ? heatingTarget(desired, physical, report.average, maximumOffset,
         device.data.temperature_scale) : null,
-      targetSource: state.roomTarget?.source ?? 'rule', minimumIntervalMinutes: rule.minimumIntervalMinutes ?? 5,
+      targetSource: roomTargetSource(state), minimumIntervalMinutes: rule.minimumIntervalMinutes ?? 5,
       nextEligibleAt: finite(state.nextChangeAt) };
   }
   return report;
 }
+

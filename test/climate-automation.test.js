@@ -1752,7 +1752,7 @@ test('HomeKit room view is opt-in per thermostat and uses fresh group values wit
   f.devices.push({ serialNumber: 'OTHER', homeKitRoomTemperature: true });
   assert.equal(f.engine.homeKitRoom('T'), null);
   f.devices.push({ serialNumber: 't', homeKitRoomTemperature: true });
-  assert.deepEqual(f.engine.homeKitRoom('T'), { ruleId: 'rooms', temperature: 20, desiredTemperature: 21 });
+  assert.deepEqual(f.engine.homeKitRoom('T'), { ruleId: 'rooms', temperature: 20, desiredTemperature: 21, targetMode: 'follow' });
   assert.equal(f.dashboard.devices.get('T').data.target_temperature_low, 22.5);
   f.external[0].temperature = 22;
   await f.engine.tick();
@@ -3187,4 +3187,187 @@ test('temperature control waits for Auto-Schedule off and learns only explicit r
   assert.equal(f.dashboard.schedules.record('T').events.length, 1);
   assert.equal(f.dashboard.schedules.record('T').events[0].value, 22);
   await f.dashboard.schedules.saving;
+});
+
+test('room target modes validate independently and preserve rules without a mode', () => {
+  const follow = { ...temperatureRule, targetMode: 'follow' };
+  delete follow.desiredTemperature;
+  assert.equal(validateRuleDrafts({ temperature: [follow] }).temperature[0].targetMode, 'follow');
+  assert.throws(() => validateRuleDrafts({ temperature: [{ ...follow, targetMode: 'fixed' }] }), /Live heating targets/);
+  assert.throws(() => validateRuleDrafts({ temperature: [{ ...follow, targetMode: 'unknown' }] }), /supported rule option/);
+  assert.throws(() => validateRuleDrafts({ fans: [{ ...fanRule, targetMode: 'fixed' }] }), /temperature rules/);
+  assert.equal(validateRuleDrafts({ temperature: [temperatureRule] }).temperature[0].targetMode, undefined);
+});
+
+test('Follow starts at the reported thermostat target and retains room intent through compensation and restart', async (t) => {
+  const rule = { ...temperatureRule, targetMode: 'follow' };
+  delete rule.desiredTemperature;
+  const f = await fixture(t, { temperature: [rule] });
+  assert.equal(f.rule('rooms').desiredTemperature, 19);
+  assert.equal(f.rule('rooms').targetSource, 'initial');
+  assert.equal(f.commands[0].target_temperature_low, 20.5);
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').desiredTemperature, 19);
+  f.dashboard.update('T', 'Thermostat', { target_temperature_low: 21.5 }, 'A');
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').desiredTemperature, 20);
+  await f.engine.persist();
+  await f.engine.start({ schedule: false });
+  assert.equal(f.rule('rooms').desiredTemperature, 20);
+  assert.equal(f.rule('rooms').paused, false);
+  await assert.rejects(f.engine.control({ id: 'rooms', action: 'resetTarget' }));
+});
+
+test('Follow waits for usable thermostat feedback instead of choosing a default temperature', async (t) => {
+  const f = await fixture(t, {});
+  f.dashboard.update('T', 'Thermostat', { target_temperature_low: null, target_temperature: null }, 'A');
+  f.rules({ temperature: [{ ...temperatureRule, targetMode: 'follow', desiredTemperature: undefined }] });
+  await f.engine.tick();
+  assert.equal(f.commands.length, 0);
+  assert.equal(f.rule('rooms').desiredTemperature, undefined);
+  assert.equal(f.rule('rooms').explanation.heating.calculatedTarget, null);
+  f.dashboard.update('T', 'Thermostat', { target_temperature_low: 20 }, 'A');
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').desiredTemperature, 20);
+});
+
+test('Fixed keeps its room target across confirmed Nest schedule changes and respects its interval', async (t) => {
+  const f = await fixture(t, {});
+  f.devices.push({ serialNumber: 'T', scheduleTimeZone: 'UTC' });
+  f.dashboard.update('T', 'Thermostat', { schedules: { 0: { a: { time: 36060, 'temp-min': 19 } } } }, 'A');
+  f.rules({ temperature: [{ ...temperatureRule, targetMode: 'fixed' }] });
+  await f.engine.tick();
+  await f.engine.tick();
+  f.advance(minute);
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').feedback.kind, 'schedule');
+  f.dashboard.update('T', 'Thermostat', { target_temperature_low: 19 }, 'A');
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').desiredTemperature, 21);
+  assert.equal(f.rule('rooms').targetSource, 'fixed');
+  assert.equal(f.rule('rooms').feedback, null);
+  assert.equal(f.rule('rooms').paused, false);
+  assert.equal(f.commands.length, 1);
+  f.advance(5 * minute);
+  await f.engine.tick();
+  assert.equal(f.commands.at(-1).target_temperature_low, 22.5);
+  assert.equal(f.rule('rooms').explanation.heating.desired, 21);
+  assert.equal(f.rule('rooms').explanation.heating.targetSource, 'fixed');
+});
+
+test('Follow uses the confirmed schedule target rather than its compensated Nest target', async (t) => {
+  const f = await fixture(t, {});
+  f.devices.push({ serialNumber: 'T', scheduleTimeZone: 'UTC' });
+  f.dashboard.update('T', 'Thermostat', { schedules: { 0: { a: { time: 36060, 'temp-min': 20 } } } }, 'A');
+  f.rules({ temperature: [{ ...temperatureRule, targetMode: 'follow', desiredTemperature: undefined }] });
+  await f.engine.tick();
+  await f.engine.tick();
+  f.advance(minute);
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').desiredTemperature, 19);
+  f.dashboard.update('T', 'Thermostat', { target_temperature_low: 20 }, 'A');
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').desiredTemperature, 20);
+  assert.equal(f.rule('rooms').targetSource, 'schedule');
+  f.advance(5 * minute);
+  await f.engine.tick();
+  assert.equal(f.commands.at(-1).target_temperature_low, 21.5);
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').desiredTemperature, 20);
+});
+
+test('Fixed edits stay in the rule; native manual changes pause and Resume restores its fixed target', async (t) => {
+  const f = await fixture(t, { temperature: [{ ...temperatureRule, targetMode: 'fixed' }] });
+  f.devices.push({ serialNumber: 'T', homeKitRoomTemperature: true });
+  await f.engine.tick();
+  assert.equal(f.engine.homeKitRoom('T'), null);
+  assert.equal(f.dashboard.temperatureTarget('T').available, false);
+  assert.match(f.dashboard.temperatureTarget('T').reason, /fixed room temperature/i);
+  await assert.rejects(f.engine.setRoomTarget('thermostat', { ruleId: 'rooms', value: 24 }), /fixed room temperature/);
+  const writes = f.commands.length;
+  await f.engine.manualThermostat('thermostat', { target_temperature_low: 23.5 });
+  f.dashboard.update('T', 'Thermostat', { target_temperature_low: 23.5 }, 'A');
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').paused, true);
+  assert.equal(f.commands.length, writes);
+  assert.equal(f.engine.temperaturePolicy('T'), null);
+  await f.engine.control({ id: 'rooms', action: 'resume' });
+  assert.equal(f.rule('rooms').desiredTemperature, 21);
+  assert.equal(f.rule('rooms').targetMode, 'fixed');
+  await f.engine.tick();
+  f.dashboard.update('T', 'Thermostat', { target_temperature_low: 24 }, 'A');
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').paused, true, 'Unclassified external changes also yield to native control');
+});
+
+test('Fixed survives Eco and restart without adopting an Eco or weekly room target', async (t) => {
+  const f = await fixture(t, { temperature: [{ ...temperatureRule, targetMode: 'fixed' }] });
+  await f.engine.tick();
+  f.dashboard.update('T', 'Thermostat', { eco_mode: true, target_temperature_low: 16 }, 'A');
+  await f.engine.tick();
+  const writes = f.commands.length;
+  await f.engine.persist();
+  await f.engine.start({ schedule: false });
+  assert.equal(f.rule('rooms').paused, false);
+  assert.equal(f.commands.length, writes);
+  f.devices.push({ serialNumber: 'T', scheduleTimeZone: 'UTC' });
+  f.dashboard.update('T', 'Thermostat', { eco_mode: false, target_temperature_low: 19,
+    schedules: { 0: { a: { time: 0, 'temp-min': 19 } } } }, 'A');
+  f.advance(5 * minute);
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').desiredTemperature, 21);
+  assert.equal(f.rule('rooms').paused, false);
+  assert.equal(f.commands.at(-1).target_temperature_low, 22.5);
+});
+
+test('changing an active rule between Follow and Fixed never adopts its compensated Nest target', async (t) => {
+  const f = await fixture(t);
+  await f.engine.tick();
+  f.rules({ temperature: [{ ...temperatureRule, targetMode: 'fixed', desiredTemperature: 23 }] });
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').desiredTemperature, 23);
+  assert.equal(f.rule('rooms').targetSource, 'fixed');
+  f.advance(5 * minute);
+  await f.engine.tick();
+  await f.engine.tick();
+  assert.equal(f.commands.at(-1).target_temperature_low, 24.5);
+  f.rules({ temperature: [{ ...temperatureRule, targetMode: 'follow', desiredTemperature: undefined }] });
+  await f.engine.tick();
+  assert.equal(f.rule('rooms').desiredTemperature, 23);
+  assert.equal(f.rule('rooms').targetSource, 'initial');
+  assert.equal(f.rule('rooms').paused, false);
+});
+
+test('rule windows transfer ownership between modes without transferring a Follow target into Fixed', async (t) => {
+  for (const firstMode of ['follow', 'fixed']) {
+    const rules = windowRules();
+    rules[0].targetMode = firstMode;
+    rules[1].targetMode = firstMode === 'fixed' ? 'follow' : 'fixed';
+    rules[1].desiredTemperature = 24;
+    const f = await fixture(t, { temperature: rules });
+    await f.engine.tick();
+    const initial = f.rule('night').desiredTemperature;
+    assert.equal(f.engine.temperaturePolicy('T').id, 'night');
+    f.advance(5 * minute);
+    await f.engine.tick();
+    assert.equal(f.engine.temperaturePolicy('T').id, 'day');
+    assert.equal(f.rule('day').desiredTemperature, rules[1].targetMode === 'fixed' ? 24 : initial);
+    assert.equal(f.rule('day').paused, false);
+    assert.equal(f.engine.leases.get('temperature:T').owner, 'day');
+  }
+});
+
+test('fixed learning policy respects priority, occupancy, windows, disable and explicit pause', async (t) => {
+  const high = { ...temperatureRule, id: 'fixed', targetMode: 'fixed', priority: 2,
+    occupancyCondition: { sourceType: 'sensor', sourceId: 'occupancy', state: 'occupied' } };
+  const f = await fixture(t, { temperature: [high, { ...temperatureRule, priority: 1, targetMode: 'follow' }] });
+  assert.equal(f.engine.temperaturePolicy('T').targetMode, 'follow');
+  f.source('occupancy').detected = true;
+  await f.engine.tick();
+  assert.equal(f.engine.temperaturePolicy('T').targetMode, 'fixed');
+  assert.equal(f.dashboard.schedules.snapshot('T').learningPaused, true);
+  f.rules({ temperature: [{ ...high, enabled: false }, { ...temperatureRule, priority: 1, targetMode: 'follow' }] });
+  await f.engine.tick();
+  assert.equal(f.engine.temperaturePolicy('T').targetMode, 'follow');
+  assert.equal(f.dashboard.schedules.snapshot('T').learningPaused, false);
 });

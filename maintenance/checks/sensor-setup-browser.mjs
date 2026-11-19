@@ -225,7 +225,7 @@ try {
   assert.equal(await details.evaluate((node) => node.open), true);
   assert.match(await details.innerText(), /Nighttime comfort/);
   assert.doesNotMatch(await details.innerText(), /Upstairs comfort|Room fan rule|Dining room temperature/);
-  for (const [control, badge] of [['interval', 'Active · between updates'], ['updating', 'Confirming target'], ['restoring', 'Restoring Nest control']]) {
+  for (const [control, badge] of [['interval', 'Plugin Temp Rule'], ['updating', 'Confirming target'], ['restoring', 'Restoring Nest control']]) {
     applied.temperatureControl = control; await refreshDashboard();
     assert.equal(await downstairs.locator('.controller-name').textContent(), 'Climate rule · Downstairs room average');
     assert.match(await downstairs.innerText(), new RegExp(badge.replace('·', '.')));

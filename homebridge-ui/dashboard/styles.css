@@ -223,6 +223,7 @@ svg { display: block; }
 .fan-curve-graph svg { width: 100%; height: auto; display: block; overflow: visible; }
 .fan-curve-axis { fill: var(--muted); font-size: 11px; font-family: inherit; }
 .fan-curve-grid { stroke: var(--line); stroke-width: 1; }
+.fan-curve-off-line { stroke-dasharray: 4 3; }
 .fan-curve-area { fill: var(--accent-wash); opacity: .65; }
 .fan-curve-line { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; }
 .fan-curve-preview .fan-curve-line { stroke-dasharray: 5 3; }
@@ -594,14 +595,14 @@ caption { text-align: left; color: var(--muted); padding-bottom: 10px; font-size
 .heating-evidence dd { margin: 0; font-weight: 600; }
 @media (max-width: 560px) { .heating-settings { padding: .8rem; } .heating-suggestion > .status-pill { display: table; margin: .5rem 0; } }
 
-.temperature-controller { border: 1px solid var(--line); border-radius: 12px; width: 100%; }
-.temperature-controller summary { display: flex; align-items: center; gap: 12px; padding: 14px; cursor: pointer; list-style: none; }
-.temperature-controller summary::-webkit-details-marker { display: none; }
+.temperature-controller, .schedule-controls { border: 1px solid var(--line); border-radius: 12px; width: 100%; }
+.temperature-controller > summary, .schedule-controls > summary { display: flex; align-items: center; gap: 12px; padding: 14px; cursor: pointer; list-style: none; }
+.temperature-controller > summary::-webkit-details-marker, .schedule-controls > summary::-webkit-details-marker { display: none; }
 .controller-heading { display: grid; gap: 5px; flex: 1; min-width: 0; }
 .controller-name, .controller-list li > div { overflow-wrap: anywhere; }
 .temperature-controller summary > .status-pill { flex-shrink: 0; }
-.temperature-controller summary > span:last-child { display: flex; }
-.temperature-controller[open] summary > span:last-child { transform: rotate(180deg); }
+.temperature-controller > summary > span:last-child, .schedule-controls > summary > span:last-child { display: flex; }
+.temperature-controller[open] > summary > span:last-child, .schedule-controls[open] > summary > span:last-child { transform: rotate(180deg); }
 .controller-details { padding: 0 14px 14px; }
 .controller-details h4 { margin: 18px 0 8px; font-size: 0.85rem; }
 .controller-list { list-style: none; padding: 0; margin: 0; }
@@ -610,9 +611,9 @@ caption { text-align: left; color: var(--muted); padding-bottom: 10px; font-size
 .controller-list small { display: block; margin-top: 5px; line-height: 1.5; }
 .controller-list .status-pill { flex-shrink: 0; }
 @media (max-width: 600px) {
-  .temperature-controller summary { flex-wrap: wrap; gap: 8px; }
+  .temperature-controller > summary, .schedule-controls > summary { flex-wrap: wrap; gap: 8px; }
   .controller-heading { flex-basis: calc(100% - 32px); }
-  .temperature-controller summary > span:last-child { margin-left: auto; }
+  .temperature-controller > summary > span:last-child, .schedule-controls > summary > span:last-child { margin-left: auto; }
   .controller-list li { flex-wrap: wrap; gap: 7px; }
 }
 
@@ -671,9 +672,14 @@ caption { text-align: left; color: var(--muted); padding-bottom: 10px; font-size
 .thermostat-card > .thermostat-controls { align-self: start; }
 
 
-.schedule-controls { border-top: 1px solid var(--line, #ddd); padding-top: 14px; margin-top: 14px; }
-.schedule-controls summary { cursor: pointer; font-weight: 650; }
-.schedule-body { display: grid; gap: 12px; padding-top: 12px; }
+.schedule-controls { margin-top: 14px; }
+.schedule-controls > summary { font-weight: 650; }
+.schedule-controls > summary { align-items: flex-start; }
+.schedule-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 3px; }
+.schedule-badges .status-pill { max-width: 100%; white-space: normal; }
+.schedule-badges .status-pill::before { flex-shrink: 0; }
+.schedule-badges .status-pill.off { color: var(--red); background: var(--red-wash); }
+.schedule-body { display: grid; gap: 12px; padding: 0 14px 14px; }
 .schedule-body label { display: grid; gap: 5px; font-size: .85rem; }
 .schedule-body input, .schedule-body select { min-width: 0; max-width: 100%; padding: 8px; }
 .schedule-row { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line, #ddd); align-items: end; }

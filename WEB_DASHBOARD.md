@@ -51,7 +51,7 @@ A fan may report a different percentage for the same physical setting. With **65
 
 In **Overview → A week of comfort**, choose **Selected thermostat** to view that thermostat’s runtime chart and **Coming up** card. The card repeats the thermostat name, current mode and any active Eco setting. It lists the next three reported weekly schedule entries in upcoming order using the thermostat’s schedule time zone. Heat mode shows only heating targets, Cool mode shows only cooling targets, and Heat / Cool shows both with labels.
 
-The card also identifies the current climate temperature rule and its reported status. While a rule is controlling heating, a confirmed Nest scheduled heating target becomes its desired room temperature. The rule adjusts Nest’s actual target using its selected sensor readings, adjustment limit and minimum update interval. For equal averaging, the desired temperature applies to the selected sensors’ average. The target sent to Nest can differ from that desired temperature.
+The card also identifies the current climate temperature rule and its reported status. In **Follow thermostat and schedule** mode, a confirmed Nest scheduled heating target becomes the room target. In **Maintain fixed room temperature** mode, schedule entries do not change the saved room target. The rule adjusts Nest’s actual target using its selected sensor readings, adjustment limit and minimum update interval. For equal averaging, the desired temperature applies to the selected sensors’ average. The target sent to Nest can differ from that desired temperature.
 
 Without an active climate temperature rule, Nest uses its selected native sensor. With the built-in sensor selected, the scheduled target applies to the thermostat’s own temperature reading. Paused, disabled, waiting and unavailable rules are labeled separately; an enabled rule alone does not confirm active control.
 
@@ -108,6 +108,8 @@ The visible dashboard refreshes Nest and external Homebridge readings every **30
 
 Discovery records when a value was read, which may differ from when the sensor measured it. Enabled rules refresh their inputs automatically. A missing or stale selected source is not silently dropped from a temperature average or treated as evidence that nobody is home.
 
+The fan speed graph includes a separate **Off · 0%** row. When fresh feedback reports the fan off, the hollow reported-state marker sits on that row, even if the fan retains a saved speed. The solid curve marker still shows the speed the rule would choose while running. The run condition determines on/off; unavailable feedback is not treated as Off.
+
 ### Temperature group example
 
 **Goal:** use the temperatures in the occupied rooms to guide a Nest thermostat's heating target.
@@ -115,7 +117,7 @@ Discovery records when a value was read, which may differ from when the sensor m
 1. On **Overview**, confirm that the thermostat is online. Use **Heat** mode and turn **Eco off** through your normal Nest controls. Nest must use its built-in thermostat sensor while a temperature group controls heating. Mixed groups can offer the assisted sensor setup described below; other groups require this selection through your normal Nest controls.
 2. Open **Settings → your thermostat → Heating response & tuning** and check **Nest schedule time zone**. **Automatic** uses the named time zone reported by the thermostat, or its paired Nest home. If Nest has not reported one, choose a zone such as **Pacific Time — Los Angeles** and save before enabling a group that uses a Nest weekly schedule.
 3. Open **Climate rules → Temperature → Create temperature group**, or use **+**. Name it **Downstairs comfort** and select the thermostat serving those rooms.
-4. Enter your target in **Desired room temperature**, using the units shown beside the field. For example, enter **21 °C** or **69.8 °F**. Live heating targets must be between **9 and 32 °C (48.2–89.6 °F)**.
+4. Choose **Room target mode**. **Follow thermostat and schedule** starts from the confirmed thermostat target and follows confirmed schedule changes; it needs no temperature field. **Maintain fixed room temperature** shows **Fixed room temperature**: enter the temperature to maintain, such as **21 °C / 69.8 °F**. Live heating targets must be between **9 and 32 °C (48.2–89.6 °F)**.
 5. Choose **Equal average of selected sensors** and select two or more inputs. A Nest living-room sensor at **20 °C** plus a Homebridge dining-room sensor at **22 °C** averages **21 °C**. Nest-only, other Homebridge-only and mixed groups are supported. For a single room, choose **One selected sensor** and select exactly one input.
 6. Review **Maximum target adjustment** and **Minimum update interval (minutes)**. Defaults are **1.5 °C / 2.7 °F** and **5 minutes**; a **0.5 °C / 0.9 °F** adjustment limit is a useful starting point for a small, supervised trial.
 7. Turn on **Enable automatic execution** and select **Save changes**. If a group mixes Nest room sensors with other Homebridge temperature sensors and needs native sensor setup, review the in-page confirmation. **Prepare thermostat** authorizes the sensor changes; **Keep current settings** leaves the group waiting. Watch **Execution status** for sensor confirmation, the group reading, desired room target, physical Nest target and command feedback. It can take a polling cycle and device feedback for a change to appear.
@@ -154,19 +156,29 @@ When no temperature group is eligible, the plugin restores only a target it stil
 
 These controls are shared by the Homebridge configuration interface and standalone web dashboard. Window changes require **Save changes**, with no bridge restart.
 
-### Manual targets and Nest schedules
+### Room target modes, manual changes and Nest schedules
 
-The **desired room temperature** is the target for the selected sensor or average. The **Nest target (adjusted)** is the value sent to the thermostat to achieve that room temperature. Both appear in Execution status; the Overview card shows the actual Nest target and its expanded controller information shows the desired room temperature and group reading.
+Choose **Climate rules → Temperature → your rule → Room target mode**:
 
-**Pause after a manual Nest target change** is off by default:
+| Mode | Room target | Learning and schedule behavior |
+| --- | --- | --- |
+| **Follow thermostat and schedule** | Starts from the confirmed thermostat heating target. Switching an active rule retains its current room target so compensation is not counted twice. Confirmed scheduled targets become room targets. | Plugin learning and automatic application remain optional. Nest Auto-Schedule is turned off by default; an explicit On choice is allowed after its warning. |
+| **Maintain fixed room temperature** | Maintains the **Fixed room temperature** entered in the rule. Existing weekly entries do not replace that room target. | Plugin learning and automatic application pause while this rule is selected. Saved preferences are retained and resume when it is no longer selected. Nest Auto-Schedule is requested off, including when it was explicitly enabled. |
 
-- **Off:** changing Nest’s target moves the desired room target by the same increase or decrease, accounting for Nest’s display rounding. This applies to the physical thermostat and Google’s app. For example, a desired room target of **70 °F** with an adjusted Nest target of **72 °F** becomes a desired **71 °F** when Nest is raised to **73 °F**. The selected sensors stay active.
-- **On:** changing Nest’s target pauses all temperature groups for that thermostat and leaves that manual setting in place. Select **Resume automatic control** when you want the group to use its saved room target again.
+Both modes use the same selected sensors, adjustment limit, minimum update interval, time window and occupancy condition. Only the highest-priority eligible rule controls a thermostat. Nest's compensated target can differ from the desired room temperature. The Overview **Temperature controlled by** section and rule execution status show the mode and current room target.
 
-Apple Home follows this same policy when it displays native Nest temperatures.
-Saving a changed **Desired room temperature** uses that exact room target. A manual adjustment does not rewrite the saved rule target, sensor membership or Nest’s weekly schedule. **Use saved room target** ends a temporary adjustment without pausing the group. Resume and re-enabling a rule start from the saved target.
+In Follow mode, **Pause after a manual Nest target change** is off by default:
 
-At the next reported Nest schedule event, the group waits for Nest to confirm its scheduled heating target, then uses that value as the desired room temperature and continues with the same sensors. An edit to a future schedule point does not end the current manual adjustment. If no Nest schedule is reported, a manual adjustment lasts until another target change, a saved-target reset or Resume. Rule windows select which sensor group is eligible; they do not create a native Nest temperature hold.
+- **Off:** raising or lowering the physical thermostat or Google app target moves the room target by the same amount, accounting for display rounding. A room target of **70 °F** with a compensated Nest target of **72 °F** becomes **71 °F** when Nest is raised to **73 °F**. The selected sensors stay active.
+- **On:** a manual target change pauses the temperature rules for that thermostat. Resume starts Follow mode from current thermostat intent.
+
+Dashboard room-target edits, and Apple Home edits when room display is enabled, set the Follow-mode room target directly. At a reported schedule event, the rule waits for Nest's matching target before using it as the new room target. Future schedule edits do not end the current adjustment. Without a usable schedule, the room target remains until another intentional change or a new control session.
+
+In Fixed mode, edit **Fixed room temperature** in the rule and save to change its target. Direct Nest or Apple Home target changes pause the rule so a manual choice takes priority. Resume restores the saved fixed room target. Eco suspends and recovers according to **Require Resume after Eco**; recovery preserves the fixed target.
+
+Turning Nest Auto-Schedule off stops its learning feature; it does not remove existing weekly entries. A fixed rule keeps its own room target when those entries run and continues compensation within its normal interval. Nest retains its schedules when Homebridge is offline. Disabling, pausing, or ending a fixed rule does not automatically turn Nest Auto-Schedule back on.
+
+For configuration compatibility, a temperature rule without `targetMode` follows thermostat and schedule changes using `desiredTemperature` as its initial target. Explicit `targetMode: "follow"` requires no saved temperature; `targetMode: "fixed"` requires `desiredTemperature`. Saved running room targets and uncertain requests remain intact across restart.
 
 Off, Eco, heating-mode changes, temperature locks and native sensor changes still take priority. Failed commands, ambiguous schedule targets and conflicting feedback during a pending adjustment pause control for review. The plugin recognizes its own accepted target writes and does not reinterpret them as manual adjustments.
 
@@ -178,11 +190,11 @@ When an automatic heating command or scheduled target remains unconfirmed for 30
 
 In **Settings → your thermostat → Apple Home temperature display**, enable **Show climate rule temperature in Apple Home**. This setting is **off by default for each thermostat** and takes effect after saving on the next automation check, without restarting the bridge.
 
-While a temperature rule controls that thermostat, its existing Apple Home tile shows the selected-sensor temperature as the current temperature and the desired room target as the set temperature. Changing that tile’s target sets the desired room temperature directly, even when **Pause after a manual Nest target change** is on. The group remains active, the saved rule target stays unchanged, and automatic Nest adjustments still respect the configured interval and offset limit.
+While a Follow-mode temperature rule controls that thermostat, its existing Apple Home tile shows the selected-sensor temperature as the current temperature and the desired room target as the set temperature. Changing that tile’s target sets the desired room temperature directly, even when **Pause after a manual Nest target change** is on. The group remains active, the saved rule target stays unchanged, and automatic Nest adjustments still respect the configured interval and offset limit.
 
 The physical Nest and Google app continue to show the actual Nest target. Their changes follow the rule’s pause setting. The dashboard shows the desired room target and adjusted Nest target separately. The tile’s heating indicator continues to reflect actual equipment activity; humidity remains the thermostat’s humidity reading.
 
-If the rule is paused, disabled, restoring control, recovering feedback, awaiting a manual or scheduled Nest target, or lacks usable readings, Apple Home shows Nest’s actual temperature and target. Changing that native target does not resume a paused rule. Cooling, Auto/range and Eco also use native readings and controls. The accessory identity stays the same, so existing rooms and scenes are retained; temperature automations use whichever values the tile currently represents.
+Fixed-mode rules use Nest’s actual temperature and target in Apple Home; a direct target change pauses the rule. If a Follow-mode rule is paused, disabled, restoring control, recovering feedback, awaiting a manual or scheduled Nest target, or lacks usable readings, Apple Home also shows Nest’s actual temperature and target. Changing that native target does not resume a paused rule. Cooling, Auto/range and Eco also use native readings and controls. The accessory identity stays the same, so existing rooms and scenes are retained; temperature automations use whichever values the tile currently represents.
 
 ### Change Eco from the overview
 
@@ -194,7 +206,7 @@ If the command fails or remains unconfirmed, the button returns to the last repo
 
 On **Overview → Your thermostats**, **Temperature controlled by** shows the current controller. Expand it to inspect the thermostat’s built-in sensor, associated official Nest room sensors and climate temperature rules assigned to that thermostat. This is read-only information; opening it or clicking a listed item does not change settings.
 
-When a temperature rule manages the heating target, its name appears with **Active**, **Active · between updates**, or **Confirming target** while Nest’s feedback is pending. **Recovering feedback** means adjustments are on hold while the rule checks for delayed confirmation and can resume automatically. **Restoring Nest control** means the rule is returning its previous heating target. Paused, disabled and waiting rules are listed with their status; simply enabling a rule does not identify it as the active controller. Rule status comes from the running engine, including when the settings editor contains unsaved changes.
+When a temperature rule manages the heating target, its name appears with **Plugin Temp Rule** in green. Between updates, **Plugin Temp Rule** appears in amber; its description explains that the rule is still controlling the room target while waiting for the minimum update interval. **Confirming target** means Nest’s feedback is pending. **Recovering feedback** means adjustments are on hold while the rule checks for delayed confirmation and can resume automatically. **Restoring Nest control** means the rule is returning its previous heating target. Paused, disabled and waiting rules are listed with their status; simply enabling a rule does not identify it as the active controller. Rule status comes from the running engine, including when the settings editor contains unsaved changes.
 
 When Nest controls directly, the heading shows its selected built-in or official room sensor. A confirmed **Thermostat sensor** can be shown even when no external-sensor list is reported. **Current sensor not reported** means Nest has not provided a recognized selection. **Control status unavailable** means current control cannot be confirmed. Native sensor selection is managed in the Nest app; climate temperature rules are managed in **Climate rules**. To use other Homebridge temperature sensors, create a temperature rule and select them as inputs there.
 
@@ -477,11 +489,12 @@ In the standalone dashboard's **Overview**, click a thermostat's target temperat
 
 | Controller | Editable target | Effect |
 | --- | --- | --- |
-| Active climate temperature rule | Desired room temperature | Retains the selected sensor group and its minimum adjustment interval. The adjusted Nest target remains visible underneath. |
+| Active Follow-mode temperature rule | Desired room temperature | Retains the selected sensor group and its minimum adjustment interval. The adjusted Nest target remains visible underneath. |
 | Native Nest control | Nest target | Sends a target for the current heating or cooling mode. Heat • Cool exposes both limits. |
+| Active Fixed-mode temperature rule | Edit in Climate rules | The tile identifies the fixed target; change its value in the rule editor. |
 | Paused climate temperature rule | Nest target | Changes Nest directly and leaves the rule paused. |
 
-A room-target edit is absolute and does not invoke **Pause after a manual Nest target change**. It follows the existing manual room-target policy, including the next usable Nest schedule boundary. The change applies to the running desired temperature; the saved baseline in Climate rules remains separate. A successful save does not mean Nest must change immediately: the rule retains its limits and update interval.
+A room-target edit is absolute and does not invoke **Pause after a manual Nest target change**. It follows the existing manual room-target policy, including the next usable Nest schedule boundary. The change applies to the running desired temperature; the selected temperature sources and saved rule configuration remain unchanged. A successful save does not mean Nest must change immediately: the rule retains its limits and update interval.
 
 A direct Nest command displays the requested target while checking feedback every two seconds for up to 30 seconds. If Nest rejects it or confirmation times out, the card shows the last reported target with an explanation. **Stop waiting** dismisses the check; it cannot recall a command already sent. Late feedback appears on the next refresh. Commands are never repeated automatically.
 
@@ -531,7 +544,9 @@ Expand **Temperature schedule** on an Overview thermostat tile. The controls are
 
 Times use the thermostat's schedule time zone. Changes are live device actions, separate from **Save changes** for plugin configuration. **Waiting for Nest confirmation** means the request has been sent; displayed state changes only when Nest reports it. After an unconfirmed request, check Nest before explicitly allowing another attempt. Requests are not blindly repeated after restart or connection failure.
 
-An eligible temperature rule disables Nest Auto-Schedule by default on thermostats that report the learning control. It waits for confirmation before compensating the heating target. Explicitly turning Nest Auto-Schedule on in the tile overrides that default and persists across restarts. Disabling or removing a rule does not automatically turn Nest learning back on. If learning control is unavailable, the tile asks you to check Nest directly and existing temperature-rule behavior continues.
+An eligible temperature rule disables Nest Auto-Schedule by default on thermostats that report the learning control. It waits for confirmation before compensating the heating target. In Follow mode, explicitly turning Nest Auto-Schedule on in the tile overrides that default and persists across restarts. A selected Fixed-mode rule requires it off and prevents enabling it until the rule is paused or changed. Disabling or removing a rule does not automatically turn Nest learning back on. If learning control is unavailable, the tile asks you to check Nest directly and existing temperature-rule behavior continues.
+
+The collapsed **Temperature schedule** section shows separate **Nest Auto-Schedule**, **Plugin learning**, and **Plugin auto-apply** badges. On is green, Off is muted red, and Paused, Waiting or Needs attention is amber. A fixed-rule pause is shown separately from saved On preferences. Offline Nest state is identified as last reported. Both this section and **Temperature controlled by** have bordered, collapsible panels.
 
 **Learn room-temperature preferences** defaults on. It records intentional desired-room-temperature changes made through the dashboard or Apple Home, including confirmed native target adjustments handled by an active rule. Compensation writes, Eco changes, existing schedule events and unclassified changes outside the plugin do not train it. At most 500 observations from the last 42 days are retained locally. A valid thermostat schedule time zone is required.
 

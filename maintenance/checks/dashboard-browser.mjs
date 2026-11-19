@@ -247,6 +247,18 @@ try {
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#save-bar').hidden);
   assert.equal(config.rules.temperature[0].manualTargetBehavior, 'pause');
+  await page.getByLabel('Room target mode', { exact: true }).selectOption('fixed');
+  await page.getByLabel('Fixed room temperature (°C)', { exact: true }).fill('22');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#save-bar').hidden);
+  assert.equal(config.rules.temperature[0].targetMode, 'fixed');
+  assert.equal(config.rules.temperature[0].desiredTemperature, 22);
+  await page.getByLabel('Room target mode', { exact: true }).selectOption('follow');
+  assert.equal(await page.getByLabel('Fixed room temperature (°C)', { exact: true }).count(), 0);
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#save-bar').hidden);
+  assert.equal(config.rules.temperature[0].targetMode, 'follow');
+  assert.equal(config.rules.temperature[0].desiredTemperature, undefined);
   const beforeFeedbackCommands = commands.length;
   feedbackFixture = { enabled: true, phase: 'paused', paused: true, desiredTemperature: 22.22222222,
     nestTarget: 19, nestUpdatedAt: Date.now() - 1800000,

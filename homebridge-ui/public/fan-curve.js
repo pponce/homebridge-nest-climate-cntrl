@@ -1,7 +1,7 @@
 import { fanCurveStages, fanRulePlan, fanSpeedError, mappedSpeed, supportedSpeed } from './fan-speed.js';
 
 // A read-only view of the same bounded curve and mapping used by fan rules.
-export function fanCurveView(rule, source, temperature, reportedSpeed) {
+export function fanCurveView(rule, source, temperature, reportedSpeed, reportedRunning) {
   if (rule.speedMode !== 'curve' || fanSpeedError(rule)) return null;
   const average = Number.isFinite(temperature) ? temperature : null;
   const startsAt = rule.desiredTemperature + rule.startGap;
@@ -23,22 +23,24 @@ export function fanCurveView(rule, source, temperature, reportedSpeed) {
       .map((value) => ({ value, label: Number(value.toFixed(1)) + '%' }));
   const reportedRange = mappedSpeed(source?.speedMapping, reportedSpeed);
   const reportedStage = stages?.find((stage) => stage.mapping === reportedRange);
-  const reported = Number.isFinite(reportedSpeed) ? stages ? reportedStage?.commandMin ?? null :
+  const reportedOff = reportedRunning === false;
+  const reported = reportedOff ? 0 : Number.isFinite(reportedSpeed) ? stages ? reportedStage?.commandMin ?? null :
     reportedSpeed >= rule.minimumSpeed && reportedSpeed <= rule.maximumSpeed ? reportedSpeed : null : null;
   return { low, high, startsAt, fullAt, minimum: rule.minimumSpeed, maximum: rule.maximumSpeed,
     points, levels, mapped: Boolean(stages), average, requested, setting, settingLabel: mapping?.label ?? null,
-    current: stages ? setting : requested, reported,
-    reportedOutside: Number.isFinite(reportedSpeed) && reported === null };
+    current: stages ? setting : requested, reported, reportedOff,
+    reportedOutside: !reportedOff && Number.isFinite(reportedSpeed) && reported === null };
 }
 
 export function drawFanCurve(host, view, formatTemperature, unit) {
   const width = host.clientWidth;
   if (width < 120) return;
-  const height = Math.max(210, view.levels.length * 19 + 50);
-  const left = view.mapped ? 78 : 48; const right = width - 16; const top = 26; const bottom = height - 42;
+  const height = Math.max(240, view.levels.length * 19 + 80);
+  const left = view.mapped ? 78 : 64; const right = width - 16; const top = 26; const bottom = height - 42;
+  const runningBottom = bottom - 32; const offRow = bottom - 6;
   const x = (value) => left + (value - view.low) / (view.high - view.low) * (right - left);
-  const y = (value) => view.maximum === view.minimum ? (top + bottom) / 2 :
-    bottom - 9 - (value - view.minimum) / (view.maximum - view.minimum) * (bottom - top - 18);
+  const y = (value) => value === 0 ? offRow : view.maximum === view.minimum ? (top + runningBottom) / 2 :
+    runningBottom - 9 - (value - view.minimum) / (view.maximum - view.minimum) * (runningBottom - top - 18);
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
   svg.setAttribute('role', 'img'); svg.setAttribute('focusable', 'false');
@@ -46,7 +48,8 @@ export function drawFanCurve(host, view, formatTemperature, unit) {
     ' by room temperature. Rule limits ' + view.minimum + ' to ' + view.maximum + ' percent. ' +
     (view.average === null ? 'Current room temperature is unavailable.' : 'Room average ' + formatTemperature(view.average) + '. ') +
     (view.current === null ? '' : 'Curve point ' + view.current.toFixed(1) + ' percent. ') +
-    (view.reported === null ? '' : 'Hollow marker shows the reported setting.'));
+    'Off is a separate row below the running-speed curve. ' +
+    (view.reportedOff ? 'Hollow marker shows the fan is off.' : view.reported === null ? '' : 'Hollow marker shows the reported setting.'));
   const add = (tag, attrs, value) => {
     const node = document.createElementNS(svg.namespaceURI, tag);
     for (const [key, val] of Object.entries(attrs)) node.setAttribute(key, String(val));
@@ -59,8 +62,10 @@ export function drawFanCurve(host, view, formatTemperature, unit) {
     const text = add('text', { x: left - 9, y: y(level.value) + 4, 'text-anchor': 'end', class: 'fan-curve-axis' }, label);
     const title = document.createElementNS(svg.namespaceURI, 'title'); title.textContent = level.label; text.append(title);
   }
+  add('line', { x1: left, x2: right, y1: offRow, y2: offRow, class: 'fan-curve-grid fan-curve-off-line' });
+  add('text', { x: left - 9, y: offRow + 4, 'text-anchor': 'end', class: 'fan-curve-axis fan-curve-off-label' }, 'Off · 0%');
   const d = view.points.map(([temperature, speed], index) => (index ? 'L' : 'M') + x(temperature).toFixed(2) + ' ' + y(speed).toFixed(2)).join(' ');
-  add('path', { d: d + ' L' + right + ' ' + bottom + ' L' + left + ' ' + bottom + ' Z', class: 'fan-curve-area' });
+  add('path', { d: d + ' L' + right + ' ' + runningBottom + ' L' + left + ' ' + runningBottom + ' Z', class: 'fan-curve-area' });
   add('path', { d, class: 'fan-curve-line' });
   const ticks = width < 320 ? [view.low, view.high] : [view.low, (view.low + view.high) / 2, view.high];
   ticks.forEach((value, index) => add('text', { x: x(value), y: bottom + 19,
@@ -75,6 +80,13 @@ export function drawFanCurve(host, view, formatTemperature, unit) {
       class: 'fan-curve-reported', 'data-speed': view.reported });
     if (view.current !== null) add('circle', { cx: x(view.average), cy: y(view.current), r: 4,
       class: 'fan-curve-current', 'data-speed': view.current });
+  } else if (view.reportedOff) {
+    // Off is known independently of the room temperature; do not invent an x-axis reading.
+    const marker = add('circle', { cx: (left + right) / 2, cy: offRow, r: 7,
+      class: 'fan-curve-reported', 'data-speed': 0, 'data-temperature-unavailable': true });
+    const title = document.createElementNS(svg.namespaceURI, 'title');
+    title.textContent = 'Fan reports Off; room temperature unavailable.'; marker.append(title);
   }
   host.replaceChildren(svg);
 }
+

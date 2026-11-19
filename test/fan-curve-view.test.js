@@ -74,3 +74,21 @@ test('larger mappings retain their actual transitions with at most ten axis labe
   assert.equal(view.points.length, 40);
   assert.equal(view.reported, 48);
 });
+
+
+test('reported Off is distinct from retained speed and the running-speed curve', () => {
+  for (const speed of [null, 50, 100]) {
+    const off = fanCurveView(rule, source, 25, speed, false);
+    assert.equal(off.reported, 0);
+    assert.equal(off.reportedOff, true);
+    assert.equal(off.reportedOutside, false);
+    assert.ok(off.current >= rule.minimumSpeed);
+    assert.ok(off.points.every((point) => point[1] >= rule.minimumSpeed));
+  }
+  assert.equal(fanCurveView(rule, source, null, null, false).reported, 0, 'Known power is independent of room temperature');
+  assert.equal(fanCurveView(rule, source, 25, null, undefined).reported, null, 'Unknown power is never shown as Off');
+  assert.equal(fanCurveView(rule, source, 25, 0, true).reportedOff, false, 'On with zero feedback is not a confirmed Off state');
+  const percent = fanCurveView({ ...rule, minimumSpeed: 25, maximumSpeed: 75 }, undefined, 25, 50, false);
+  assert.equal(percent.reported, 0);
+  assert.equal(percent.reportedOff, true);
+});
