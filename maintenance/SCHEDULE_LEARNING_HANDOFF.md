@@ -7,7 +7,7 @@ Improve intentional heating-schedule preference learning, expose its settings, e
 - Repository: https://github.com/pponce/homebridge-nest-climate-cntrl
 - Remote base: `0bc0406173d9c19b444aa61cc7cf794f71a1ad31`, main / v0.6.12.
 - Branch: `feature/schedule-learning-patterns`.
-- Draft PR: https://github.com/pponce/homebridge-nest-climate-cntrl/pull/43.
+- Merged PR: https://github.com/pponce/homebridge-nest-climate-cntrl/pull/43.
 - Validated implementation commit: `379e1389ff7957f33140d4a471b3ac28643f2540`.
 - Release authorization: publish stable v0.6.13 on GitHub with changelog and release notes, and supply the maintainer-run npm publication script. Do not publish to npm or change live devices from this environment.
 
@@ -36,8 +36,8 @@ Improve intentional heating-schedule preference learning, expose its settings, e
 
 ## Exact next steps
 
-1. Integrate the release commit into main by fast-forward after confirming the expected remote base, then wait for the existing gated release workflow.
-2. Verify the v0.6.13 release, exact commit, uploaded assets and helper checksum. Return maintenance/publish-0.6.13.sh as one complete SSH-safe block.
+1. Run maintenance/publish-0.6.13.sh on the existing publishing host to publish the tested tarball to npm latest. Open the printed npm authorization URL on the desktop while SSH waits. The publisher does not install or restart Homebridge.
+2. Install the update after npm publication and reload the dashboard to see the new settings cards.
 3. For hardware validation, review suggestions before enabling auto-apply, confirm a manual schedule entry is protected, save learning settings in each host, and monitor a radiant heating cycle with bounded compensation.
 
 ## Design sources
@@ -55,3 +55,12 @@ The weights and thresholds are independently implemented plugin heuristics, not 
 - package.json, lockfile, release marker, public changelog and existing stable helpers target 0.6.13.
 - Publisher bootstrap: maintenance/publish-0.6.13.sh; helper SHA256: `045a1edbaa331407c50a832f3eda4a15b2a9ac4de9e4e46c627eb27ef3850d58`.
 - The workflow derives stable release notes from the exact v0.6.13 changelog section and gates GitHub publication on the full test matrix and browser checks.
+
+## Published release checkpoint
+
+- GitHub stable release: https://github.com/pponce/homebridge-nest-climate-cntrl/releases/tag/v0.6.13; confirmed as latest, draft=false and prerelease=false.
+- Release tag and target commit: `15f940129e534a785f2808946e69e06ed01a23a2`.
+- PR #43 is merged. Main Test run 44482395414 and Release run 44482395283 passed; all six runtime combinations, browser checks, package checks, and installer/publisher scenarios passed.
+- All five assets are uploaded. Publisher SHA256 matches the bootstrap: `045a1edbaa331407c50a832f3eda4a15b2a9ac4de9e4e46c627eb27ef3850d58`.
+- Package SHA256: `87c0f122dd41c3f4e8f08fede33014696db5bf9ebb72093a4b1d7b28aa677832`.
+- No npm publication or live Homebridge installation was performed. No GitHub release blockers remain. Physical-device validation remains pending.
