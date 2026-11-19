@@ -9,7 +9,7 @@ Improve intentional heating-schedule preference learning, expose its settings, e
 - Branch: `feature/schedule-learning-patterns`.
 - Draft PR: https://github.com/pponce/homebridge-nest-climate-cntrl/pull/43.
 - Validated implementation commit: `379e1389ff7957f33140d4a471b3ac28643f2540`.
-- No version change, release, npm publication, or live-device setting changes are part of this task.
+- Release authorization: publish stable v0.6.13 on GitHub with changelog and release notes, and supply the maintainer-run npm publication script. Do not publish to npm or change live devices from this environment.
 
 ## Completed changes and decisions
 
@@ -36,8 +36,8 @@ Improve intentional heating-schedule preference learning, expose its settings, e
 
 ## Exact next steps
 
-1. Review PR #43 and the current checks. This task has not merged it or published a release.
-2. Merge or prepare a versioned GitHub release when requested; ask before publishing to npm.
+1. Integrate the release commit into main by fast-forward after confirming the expected remote base, then wait for the existing gated release workflow.
+2. Verify the v0.6.13 release, exact commit, uploaded assets and helper checksum. Return maintenance/publish-0.6.13.sh as one complete SSH-safe block.
 3. For hardware validation, review suggestions before enabling auto-apply, confirm a manual schedule entry is protected, save learning settings in each host, and monitor a radiant heating cycle with bounded compensation.
 
 ## Design sources
@@ -49,3 +49,9 @@ Improve intentional heating-schedule preference learning, expose its settings, e
 - https://support.google.com/googlehome/answer/9248719
 
 The weights and thresholds are independently implemented plugin heuristics, not a reproduction of Nest's undisclosed formulas.
+
+## v0.6.13 release preparation
+
+- package.json, lockfile, release marker, public changelog and existing stable helpers target 0.6.13.
+- Publisher bootstrap: maintenance/publish-0.6.13.sh; helper SHA256: `045a1edbaa331407c50a832f3eda4a15b2a9ac4de9e4e46c627eb27ef3850d58`.
+- The workflow derives stable release notes from the exact v0.6.13 changelog section and gates GitHub publication on the full test matrix and browser checks.

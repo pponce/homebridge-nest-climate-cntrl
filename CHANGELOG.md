@@ -1,12 +1,24 @@
 <!-- Modified by pponce for Nest Climate Cntrl; derived from Nest Accfactory. See NOTICE. -->
-## Unreleased
+## v0.6.13
 
-- Learn heating schedule preferences using repeated dates, nearby local times, weighted agreement and greater influence for recent choices. Propose temperatures that were actually selected.
-- Tune schedule-learning evidence, day grouping, history, recency, time matching, rounding and temperature similarity in each thermostat's advanced Settings. Changes apply without restarting.
-- Preserve existing user schedule entries during automatic application; conflicting suggestions require approval. Show supporting dates and weighted agreement with each suggestion.
-- Explain heating-response recommendations, their update intervals and adjustment limits, and how they coexist with Nest True Radiant, Early-On and Heat Pump Balance.
-- Place Climate rules above Sensors & fans in the desktop and compact navigation.
-- Group each thermostat's settings in a bordered card that starts collapsed, with heating, response-observation and Apple Home summaries. Keep Apple Home controls in their own bordered section and preserve expanded cards while editing and saving.
+**More adaptable schedule learning and clearer thermostat settings.**
+
+### Schedule learning
+- Learn heating preferences from intentional temperature choices on separate local dates, grouping nearby times and giving more influence to recent choices. Use weighted agreement to handle conflicting preferences and propose a temperature that was actually selected.
+- Adjust the learning rules under **Settings → Thermostat settings → your thermostat → Schedule learning · advanced settings**. Choose separate weekdays, weekday/weekend groups or one daily routine, and tune the observed-day minimum, history window, recency weighting, time similarity, time rounding, temperature similarity and required agreement. Field help explains each setting; temperature differences follow your Celsius/Fahrenheit preference. Changes apply without restarting.
+- Count repeated edits on the same date once for each time group. Retain up to 90 days and 500 observations, with a default evidence window of 42 days. Scheduled changes, plugin compensation and Eco events do not train the preference learner; leaving a temperature unchanged does not count as approval.
+- Protect user-created schedule entries during automatic application. Automatically update only nearby entries previously saved and confirmed as plugin-learned; conflicting user entries require approval. Show supporting observation counts, weighted agreement and review requirements with each suggestion.
+
+### Thermostat settings and navigation
+- Group each thermostat's settings in its own bordered card, collapsed by default. The summary shows heating type, temperature-rule count, response observation, Apple Home temperature-display preference and optional Apple Home features. Draft changes update the summary and show an unsaved indicator.
+- Keep heating guidance, advanced schedule learning and Apple Home controls visibly contained within their thermostat. Give Apple Home controls their own bordered section. Cards expand independently and remain open through edits and saves. Invalid fields reopen their containing sections for correction.
+- Explain what heating-response observation measures and how its recommendations interact with Nest True Radiant, Early-On and Heat Pump Balance. Observation remains advisory and changes rule tuning only through **Apply to this rule**. Nest retains equipment timing; the plugin's interval and adjustment limit bound changes to Nest's target.
+- Place **Climate rules** above **Sensors & fans** in desktop navigation and the compact menu.
+
+### Updating and validation
+- Reload the dashboard after installation. Existing configuration and accessory pairing are retained. Learning settings do not enable automatic application; automatic application remains opt-in. User schedule entries are preserved unless replacement is explicitly approved.
+- Release validation covers lint, test coverage, six supported Node/Homebridge combinations, package installation, embedded/standalone/reverse-proxy dashboards, mobile layout, and installer/publisher success and failure paths. Physical thermostat behavior and True Radiant coordination have not been hardware-verified.
+- The GitHub release includes the tested package, installer, npm publisher and checksums. The maintainer-run npm publisher verifies the package before publishing to **latest** and does not install it or restart Homebridge.
 
 ## v0.6.12
 
