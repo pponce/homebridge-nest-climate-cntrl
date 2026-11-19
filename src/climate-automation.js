@@ -514,7 +514,7 @@ export class ClimateAutomation {
           (old.rule.desiredTemperature !== rule.desiredTemperature || old.rule.thermostatId !== rule.thermostatId ||
             old.rule.targetMode !== rule.targetMode)) {
         const retained = old.controlStarted && this.windowPermits(old) && old.rule.thermostatId === rule.thermostatId ?
-          desiredTarget(old) : null;
+            desiredTarget(old) : null;
         if (state.manualTarget) {
           this.pause(state, 'The room target changed during a manual Nest command. Review it, then Resume.');
         }

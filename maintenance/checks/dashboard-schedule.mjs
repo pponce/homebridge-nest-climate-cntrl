@@ -113,7 +113,7 @@ export async function checkScheduleOverview(browser, base, output) {
     eco = false; control = 'interval'; await refresh();
     const help = page.getByRole('button', { name: 'Help for Nest temperature schedule', exact: true });
     await help.focus(); await page.getByRole('tooltip').waitFor();
-    assert.match(await page.getByRole('tooltip').innerText(), /Built-in sensor only[\s\S]*Active climate temperature rule/);
+    assert.match(await page.getByRole('tooltip').innerText(), /Built-in sensor only[\s\S]*Follow thermostat and schedule[\s\S]*Maintain fixed room temperature/);
     await page.keyboard.press('Escape');
     assert.equal(await page.getByRole('tooltip').count(), 0);
     assert.equal(await help.evaluate((node) => node === document.activeElement), true);
