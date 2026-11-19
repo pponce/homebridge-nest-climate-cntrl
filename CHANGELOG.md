@@ -6,7 +6,7 @@
 ### Temperature rules
 - Add **Room target mode** under **Climate rules → Temperature → your rule**. **Follow thermostat and schedule** starts with confirmed thermostat intent, follows confirmed schedule targets, and needs no fixed-temperature field. **Maintain fixed room temperature** maintains the value entered in **Fixed room temperature**.
 - Keep selected sensors, averaging, compensation limits, update intervals, priorities, occupancy conditions and time windows in both modes. Switching an active rule to Follow retains its room target rather than adopting an already compensated Nest target.
-- While a fixed rule is selected, pause plugin learning and automatic application without erasing their saved preferences. Request Nest Auto-Schedule off even after an explicit On override, and wait for reported confirmation before control. Prevent enabling Nest learning or applying learned entries while that fixed rule is selected.
+- While a fixed rule is selected, pause plugin learning and automatic application without erasing their saved preferences. On supported thermostats, request Nest Auto-Schedule off even after an explicit On override, and wait for reported confirmation before control. Prevent enabling Nest learning or applying learned entries while that fixed rule is selected.
 - Preserve existing weekly entries. Fixed rules keep their own room target when those entries run. Direct Nest or Apple Home target changes pause fixed rules; Resume restores the fixed target. Edit fixed targets in Climate rules. Eco suspension and automatic recovery preserve the fixed target.
 - Retain configuration compatibility for rules without an explicit mode, and preserve running room intent across restart and eligible rule handoffs.
 

@@ -28,7 +28,8 @@ export function renderScheduleControls(device, { unit, live, send, refresh }) {
     model.autoApplyStatus === 'attention' ? 'Needs attention' : model.autoApplyStatus === 'waiting' ? 'Waiting' : 'On', model.autoApplyMessage);
   heading.append(badges);
   if (!live || !model.connected) heading.append(node('small', 'Nest state last reported · offline'));
-  else if (model.pending) heading.append(node('small', 'Waiting for Nest confirmation'));
+  else if (model.pending) heading.append(node('small', model.pending.failure ? 'Nest request needs attention' :
+    Date.now() - model.pending.at > 60000 ? 'Nest confirmation delayed' : 'Waiting for Nest confirmation'));
   const chevron = node('span'); chevron.setAttribute('aria-hidden', 'true');
   chevron.innerHTML = '<svg class="icon" viewBox="0 0 24 24"><path d="m6 10 6 6 6-6"/></svg>';
   summary.append(heading, chevron); box.append(summary);

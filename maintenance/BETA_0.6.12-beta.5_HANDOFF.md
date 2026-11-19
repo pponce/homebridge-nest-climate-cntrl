@@ -24,13 +24,12 @@ Implement Follow thermostat and schedule / Maintain fixed room temperature, make
 
 - 250 focused tests passed through the controller-badge update; fan Off coverage is added in the final validation. Coverage includes initialization, schedules, mode changes, restart, Eco, manual overrides, rule handoffs, priority/occupancy, learner pause/resume, queue guards and config validation.
 - Browser regressions updated for mode fields, both hosts, saving, Fahrenheit bounds, fixed policy controls and collapsed status badges.
-- Local build and whitespace checks passed. Full runtime/coverage/lint/browser checks must pass in CI before release.
+- Local build, installer/publisher simulations and whitespace checks passed. PR #42 passed full lint/coverage, six Node/Homebridge combinations, package validation and both browser suites on `f92414ceafd506b13a7e2ae41f70c94644c54c6a`. The final documentation and collapsed request-status wording use the release workflow gates again.
 - Live thermostat execution has not been verified. The previously deferred temperature-rule confirmation-wait investigation is not part of this change.
 
 ## Exact next steps
 
-1. Finish local focused validation and installer/publisher simulations.
-2. Push the feature branch, open its draft PR, and pass CI including both browser suites.
-3. Fast-forward main to the tested commit; verify release workflow, v0.6.12-beta.5 tag, notes and all uploaded checksummed assets.
-4. Supply a checksum-pinned npm beta publisher bootstrap. Do not claim npm publication before registry verification; the requested helper performs it on the user's host.
-5. Test a real thermostat: save each mode, confirm the room target source and Nest learning state, run a schedule boundary, verify fixed learning pauses/resumes, and check collapsed Overview badges.
+1. Commit the final documentation and collapsed request-status wording, update PR #42 and main, and run the gated release workflow.
+2. Verify v0.6.12-beta.5 points to that final commit and all checksummed assets are uploaded.
+3. Supply a checksum-pinned npm beta publisher bootstrap. Do not claim npm publication before registry verification; the requested helper performs it on the user's host.
+4. Test a real thermostat: save each mode, confirm the room target source and Nest learning state, run a schedule boundary, verify fixed learning pauses/resumes, and check collapsed Overview badges.
